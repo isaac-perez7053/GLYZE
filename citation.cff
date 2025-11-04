@@ -1,0 +1,18 @@
+cff-version: 1.0.0
+message: "If you use this software, please cite it using the following metadata."
+title: "GLYZE: Glyceride and Lipid sYnthetiZation Engine"
+version: "1.0.0"
+authors:
+  - family-names: Perez
+    given-names: Isaac
+  - family-names: Smith
+    given-names: Avery
+  - family-names: Scales
+    given-names: Stryker
+  - family-names: Osborne
+    given-names: Ian
+  - family-names: XiaoLen
+    given-names: Deng
+date-released: "2025"
+url: ""
+license: "MIT"  
