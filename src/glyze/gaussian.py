@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from ase.io import write, read
 from qcforever.gaussian_run import GaussianRunPack
 import MDAnalysis as mda

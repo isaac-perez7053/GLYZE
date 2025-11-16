@@ -1,4 +1,10 @@
 tester.ipynb
 *.pdb
-gromacs_topgen.py
-gromacs.py
+scripts/tester.ipynb
+scripts/esterification_test.py
+src/__pycache__/
+tests/
+build/
+.pytest_cache/
+oplsaa.ff/
+fchks/

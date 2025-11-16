@@ -1,45 +1,45 @@
 [project]
-name = "GLYZE"
+name = "glyze"
 version = "1.0.0"
-description = "GLYZE is a python package designed for the study of glycerides. 
-Currently, the package's primary use has been to study the viscocity and melting 
-points of various glycerides using molecular dynamics and various empirical models. 
-The package also allows you to model various chemical processes often associated with 
-glycerides such as interesterication and esterification."
+description = """
+GLYZE is a python package designed for the study of glycerides.
+Currently, the package's primary use has been to study the viscosity and melting
+points of various glycerides using molecular dynamics and various empirical models.
+The package also allows you to model various chemical processes often associated with
+glycerides such as interesterification and esterification.
+"""
 readme = "README.md"
-requires-python = ">=3.13.1"
+requires-python = ">=3.11"
 authors = [
   { name = "Isaac Perez", email = "iperez@g.hmc.edu" },
   { name = "Ian Osborne", email = "iosborne@g.hmc.edu" },
   { name = "XiaoLen Deng", email = "xdeng@g.hmc.edu" },
   { name = "Avery Smith", email = "avsmith@g.hmc.edu" },
-  { name = "Stryker Scales", email = "sscales@g.hmc.edu"}
+  { name = "Stryker Scales", email = "sscales@g.hmc.edu" }
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Programming Language :: Python :: 3",
-    "Intended Audience :: Science/Research",
-    "Topic :: Scientific/Engineering :: Chemistry",
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Chemistry",
 ]
 
 dependencies = [
-    "scipy=1.16.2",
-    "scikit-learn=1.7.2",
-    "matplotlib=3.10.6",
-    "ordered_set=4.1.0",
-    "mdanalysis=2.10.0",
-    "ase=3.26.0",
-    "rdkit=2025.9.1",
-    "mdapackmol=0.1.0",
-    "gmxapi=0.4.2"
+  "scipy==1.16.2",
+  "scikit-learn==1.7.2",
+  "matplotlib==3.10.6",
+  "ordered-set==4.1.0",
+  "MDAnalysis==2.10.0",
+  "ase==3.26.0",
+  "rdkit==2025.9.1",
 ]
 
 [project.scripts]
-glaze = "glaze.__main__:main"
+glyze = "glyze.__main__:main"
 
 [project.optional-dependencies]
 dev = [
-    "black>=22.3"
+  "black>=22.3",
 ]
 
 [build-system]
@@ -48,4 +48,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"glyze" = ["opls_glyceride.json"]
+
 

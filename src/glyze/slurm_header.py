@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional, List
 
@@ -9,49 +11,34 @@ class SlurmHeader:
 
     Each non-empty field in this dataclass generates a corresponding '#SBATCH' line in a job
     submission script. Use 'additional_lines' to include any custom directives not covered by
-    the predefined attributes.
-
-    Attributes:
-        job_name (Optional[str]):
-            Name of the job (--job-name).
-        partition (Optional[str]):
-            Partition or queue to submit the job to (--partition).
-        ntasks (Optional[int]):
-            Total number of MPI tasks (--ntasks).
-        cpus_per_task (Optional[int]):
-            Number of CPU cores per task (--cpus-per-task).
-        time (Optional[str]):
-            Maximum runtime in the format 'D-HH:MM:SS' or 'HH:MM:SS' (--time).
-        output (Optional[str]):
-            Path or pattern for the STDOUT file (--output), e.g., 'slurm-%j.out'.
-        error (Optional[str]):
-            Path or pattern for the STDERR file (--error), e.g., 'slurm-%j.err'.
-        additional_lines (List[str]):
-            List of extra '#SBATCH' directive lines, e.g., ['#SBATCH --mem=4G',
-            '#SBATCH --mail-type=END'].
+    the predefined attributes. Use 'shell_lines' to include non-#SBATCH shell lines (e.g.,
+    'module load ...', exports) that should appear immediately after the #SBATCH block.
     """
 
     job_name: Optional[str] = None
     partition: Optional[str] = None
+    nodes: Optional[int] = None
     ntasks: Optional[int] = None
     cpus_per_task: Optional[int] = None
-    time: Optional[str] = None  # e.g. "24:00:00"
-    output: Optional[str] = None  # e.g. "slurm-%j.out"
+    time: Optional[str] = None
+    output: Optional[str] = None
     error: Optional[str] = None
+
+    # Extra SBATCH lines like "--mem=60gb", "--hint=nomultithread", etc.
     additional_lines: List[str] = field(default_factory=list)
 
-    def to_string(self) -> str:
-        """
-        Generate the '#SBATCH' directive block.
+    # non-#SBATCH shell lines placed after the header (modules, exports, vars)
+    shell_lines: List[str] = field(default_factory=list)
 
-        Returns:
-            A string containing each SLURM directive as a separate '#SBATCH' line.
-        """
-        lines = []
+    def serialize(self) -> str:
+        lines: List[str] = ["#!/bin/bash"]
+
         if self.job_name:
             lines.append(f"#SBATCH --job-name={self.job_name}")
         if self.partition:
             lines.append(f"#SBATCH --partition={self.partition}")
+        if self.nodes:
+            lines.append(f"#SBATCH --nodes={self.nodes}")
         if self.ntasks:
             lines.append(f"#SBATCH --ntasks={self.ntasks}")
         if self.cpus_per_task:
@@ -63,8 +50,18 @@ class SlurmHeader:
         if self.error:
             lines.append(f"#SBATCH --error={self.error}")
 
-        # Append any extra #SBATCH lines, e.g. --mem=4G, --mail-type=ALL, etc.
         for line in self.additional_lines:
             lines.append(line)
 
+        if self.shell_lines:
+            lines.append("")
+            lines.extend(self.shell_lines)
+
         return "\n".join(lines)
+
+    def to_string(self) -> str:
+        """
+        Backwards-compatible alias for serialize(), since SlurmFile.write()
+        expects slurm_header.to_string().
+        """
+        return self.serialize()

@@ -1,3 +1,26 @@
+Metadata-Version: 2.4
+Name: glyze
+Version: 1.0.0
+Summary: GLYZE is a python package designed for the study of glycerides.
+Author-email: Isaac Perez <iperez@g.hmc.edu>, Ian Osborne <iosborne@g.hmc.edu>, XiaoLen Deng <xdeng@g.hmc.edu>, Avery Smith <avsmith@g.hmc.edu>, Stryker Scales <sscales@g.hmc.edu>
+Classifier: Development Status :: 4 - Beta
+Classifier: Programming Language :: Python :: 3
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Chemistry
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: scipy==1.16.2
+Requires-Dist: scikit-learn==1.7.2
+Requires-Dist: matplotlib==3.10.6
+Requires-Dist: ordered-set==4.1.0
+Requires-Dist: MDAnalysis==2.10.0
+Requires-Dist: ase==3.26.0
+Requires-Dist: rdkit==2025.9.1
+Provides-Extra: dev
+Requires-Dist: black>=22.3; extra == "dev"
+Dynamic: license-file
+
 # GLYZE
 
 Glyceride and Lipid sYnthetiZation Engine

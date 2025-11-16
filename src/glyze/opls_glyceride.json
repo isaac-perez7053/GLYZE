@@ -1,0 +1,94 @@
+{
+  "types": {
+    "opls_465": {
+      "mass": 12.011,
+      "comment": "AA C: esters - carbonyl carbon (acyl C=O)",
+      "label": "ester_c_aa"
+    },
+    "opls_466": {
+      "mass": 15.9994,
+      "comment": "AA =O: esters - carbonyl oxygen",
+      "label": "ester_o_dbl_aa"
+    },
+    "opls_467": {
+      "mass": 15.9994,
+      "comment": "AA -OR: esters - alkoxy oxygen",
+      "label": "ester_o_alkoxy_aa"
+    },
+    "opls_180": {
+      "mass": 15.9994,
+      "comment": "O: dialkyl ether (good for glycerol linkage O when not protonated)",
+      "label": "ether_o"
+    },
+    "opls_154": {
+      "mass": 15.9994,
+      "comment": "all-atom O: mono alcohols (glycerol OH/oxy when protonated)",
+      "label": "alcohol_o"
+    },
+    "opls_155": {
+      "mass": 1.008,
+      "comment": "all-atom H(O): mono alcohols",
+      "label": "alcohol_ho"
+    },
+    "opls_157": {
+      "mass": 12.011,
+      "comment": "all-atom C: CH3 & CH2 in alcohols (use for C adjacent to O in glycerol)",
+      "label": "alcohol_c_chx"
+    },
+    "opls_135": {
+      "mass": 12.011,
+      "comment": "alkane CH3 (acyl chain terminal methyl)",
+      "label": "alkane_ch3"
+    },
+    "opls_136": {
+      "mass": 12.011,
+      "comment": "alkane CH2 (saturated acyl chain methylenes)",
+      "label": "alkane_ch2"
+    },
+    "opls_140": {
+      "mass": 1.008,
+      "comment": "alkane H (generic sp3 C-H)",
+      "label": "alkane_h"
+    },
+    "opls_141": {
+      "mass": 12.011,
+      "comment": "alkene C (R2-C=) (cis/trans double bonds in acyl chain)",
+      "label": "alkene_c_r2"
+    },
+    "opls_142": {
+      "mass": 12.011,
+      "comment": "alkene C (RH-C=)",
+      "label": "alkene_c_rh"
+    },
+    "opls_143": {
+      "mass": 12.011,
+      "comment": "alkene C (H2-C=)",
+      "label": "alkene_c_h2"
+    },
+    "opls_144": {
+      "mass": 1.008,
+      "comment": "alkene H (H-C=)",
+      "label": "alkene_h"
+    }
+  },
+  "map": {
+    "opls_EST_C": "opls_465",
+    "opls_EST_O": "opls_466",
+    "opls_ALKOXY_O": "opls_467",
+
+    "opls_GLY_O": "opls_180",
+    "opls_GLY_CH2": "opls_157",
+    "opls_GLY_C2": "opls_157",
+
+    "opls_ALK_CH3": "opls_135",
+    "opls_ALK_CH2": "opls_136",
+
+    "opls_HGEN": "opls_140",
+    "opls_ALKENE_C_R2": "opls_141",
+    "opls_ALKENE_C_RH": "opls_142",
+    "opls_ALKENE_C_H2": "opls_143",
+    "opls_ALKENE_H": "opls_144",
+    "opls_GLY_OH": "opls_154",
+    "opls_GLY_HO": "opls_155"
+  }
+}

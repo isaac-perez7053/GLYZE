@@ -1,10 +1,10 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Tuple, Optional, List
-import os
+from typing import Tuple, Optional, List, Union
 from rdkit import Chem
 from rdkit.Chem import AllChem
 import copy
+from pathlib import Path
 
 
 def _fa_key(fa: Optional[FattyAcid]) -> tuple:
@@ -46,14 +46,16 @@ class FattyAcid:
     """
     Immutable description of a fatty acid chain.
 
-    Attributes:
+    Attributes
+    ----------
         length (int): number of carbons in the main chain
         db_positions (Tuple[int, ...]) : tuple of integers k representing a double bond between C_k and C_{k+1} (dk)
         db_stereo (Tuple[str, ...]): tuple of "Z"/"E" (or "cis"/"trans") algined with db_positions
             Geometric isomers of a double bond correspond to either cis ("kinked chains") or trans ("linear chains")
         branches (Tuple[int, ...]): tuple of integers representing positions of methyl branches (e.g., (15, "Me"))
 
-    Functions:
+    Functions
+    ---------
         canonical(): returns a canonical (normalized) version of the fatty acid.
         to_rdkit_mol(): converts the fatty acid to an RDKit molecule.
     """
@@ -310,6 +312,31 @@ class Glyceride:
             self.sn = tuple(new_sn)
             return self
 
+    @staticmethod
+    def mol_to_pdb(mol: Chem.Mol, filepath: Union[str, Path]) -> Path:
+        """
+        Convert an RDKit Mol object into a PDB file at the specified path.
+        The file will persist until manually deleted.
+
+        Args:
+            mol (Chem.Mol): The RDKit molecule to convert to PDB format
+            filepath (Union[str, Path]): Full path where the PDB file should be saved
+
+        Returns:
+            Path: Path to the created PDB file
+        """
+        # Convert to Path object if string
+        pdb_filepath = Path(filepath)
+
+        # Create parent directories if they don't exist
+        pdb_filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write the PDB file
+        Chem.MolToPDBFile(mol, str(pdb_filepath))
+
+        print(f"PDB file created at: {pdb_filepath}")
+        return pdb_filepath
+
     def glyceride_to_rdkit(self, optimize: bool = True) -> Chem.Mol:
         """
         Build an RDKit molecule for the given Glyceride, embed in 3D, and relax.
@@ -412,51 +439,74 @@ class Glyceride:
         mol: Chem.Mol,
         gjf_path: str,
         jobname: str = "glyceride_opt",
-        mem="8GB",
-        nproc=8,
-        chg=0,
-        mult=1,
+        mem: str = "32GB",
+        nproc: int = 32,
+        chg: int = 0,
+        mult: int = 1,
     ) -> None:
         """
-        Write a Gaussian .gjf file from an RDkit molecule.
+        Write a Gaussian .gjf file from an RDKit molecule, matching your
+        working Gaussian input style.
 
         Args:
             mol (Chem.Mol): The RDKit molecule with 3D coordinates.
             gjf_path (str): Output path for the Gaussian .gjf file.
-            jobname (str): Title for the Gaussian job.
-            mem (str): Memory allocation for Gaussian (e.g., "8GB").
-            nproc (int): Number of processors for Gaussian
+            jobname (str): Title for the Gaussian job (also used in %chk).
+            mem (str): Memory allocation for Gaussian (e.g., "32GB").
+            nproc (int): Number of processors for Gaussian.
             chg (int): Total charge of the molecule.
-            mult (int): Sping multiplicity of the molecule.
-
-        Raises:
-            RuntimeError: If the molecule has no 3D conformer.
-
-        Returns:
-            None: Write the .gjf file to gjf_path.
+            mult (int): Spin multiplicity of the molecule.
         """
-        print(type(mol))
         if mol.GetNumConformers() == 0:
             raise RuntimeError(
                 "No 3D conformer found; create with glyceride_to_rdkit(optimize=True)."
             )
 
         conf = mol.GetConformer()
-        lines = []
+
+        # Use the jobname for the checkpoint file name
+        chk_name = f"{jobname}.chk"
+
+        lines: list[str] = []
+
+        # Header section – match your working script
+        # Example:
+        # %chk=molecule.chk
+        # %mem=32GB
+        # %NProcShared=32
+        lines.append(f"%chk={chk_name}")
         lines.append(f"%mem={mem}")
-        lines.append(f"%nprocshared={nproc}")
-        lines.append(f"%chk={os.path.splitext(gjf_path)[0]}.chk")
-        lines.append("#p B3LYP/6-311G(d,p) EmpiricalDispersion=GD3BJ Opt SCF=Tight")
+        lines.append(f"%NProcShared={nproc}")
+
+        # Route section – match your working example:
+        # #P B3LYP/6-31 Opt
+        # (you can parameterize this later if needed)
+        lines.append("#P B3LYP/6-31 Opt")
+
+        # Blank line
         lines.append("")
+
+        # Title line – use the jobname the user passed in
+        # e.g. "Triolein geometry optimization — B3LYP-D3(BJ)/6-311G(d,p)"
         lines.append(jobname)
+
+        # Blank line before charge/multiplicity
         lines.append("")
+
+        # Charge and multiplicity line, e.g. "0 1"
         lines.append(f"{chg} {mult}")
+
+        # Cartesian coordinates
         for i, atom in enumerate(mol.GetAtoms()):
             pos = conf.GetAtomPosition(i)
             lines.append(
                 f"{atom.GetSymbol():<2}  {pos.x: .6f}  {pos.y: .6f}  {pos.z: .6f}"
             )
+
+        # Final blank line
         lines.append("")
+
+        # Write to disk
         with open(gjf_path, "w") as f:
             f.write("\n".join(lines))
 

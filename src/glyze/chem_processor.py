@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import numpy as np
 from typing import Dict, List, Tuple, Set
-from glyceride import Glyceride, FattyAcid, SymmetricGlyceride
-from glyceride_mix import GlycerideMix
+from glyze.glyceride import Glyceride, FattyAcid, SymmetricGlyceride
+from glyze.glyceride_mix import GlycerideMix
 from dataclasses import dataclass
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
@@ -500,6 +502,268 @@ class ChemReactSim:
         print(f"Printing Initial state: {init_state}")
         print(f"Printing rate constants: {ks}")
         print(f"Printing shape of reactant stoichiometry: {react_stoic.shape}")
+
+        return PKineticSim(
+            species_names=species_names,
+            react_stoic=react_stoic,
+            prod_stoic=prod_stoic,
+            init_state=init_state,
+            k_det=ks,
+            rxn_names=rxn_names,
+            chem_flag=chem_flag,
+        )
+
+    @staticmethod
+    def p_kinetic_interesterification(
+        list_of_stuff: List[Glyceride],
+        initial_conc: List[int],
+        plucked: List[str],
+        arranged: List[str],
+        k_calc: str = "permutation",
+        chem_flag=False,
+    ) -> PKineticSim:
+        """
+        Will simulate the bath reaction for the given glyceride spieces.
+
+        Parameters:
+            list_of_stuff (List[Glyceride]): List of the MAGs, DAGs, TAGs present in the reaction
+            initial_conc (List[int]): List of initial concentrtions for each MAGs, DAGs, or TAGs
+            k_calc (str): Method to calculate rate constants. Options are "permutation" or
+                                    "random". Default is "permutation".
+            chem_flag (bool): If True, divide by avogadro's number while calculating stochastic rate constants.
+
+        Returns:
+            Simulation: runs the graph to see what TAGs will be left
+        """
+        #
+        react_stoic = []
+        prod_stoic = []
+        rxn_names: List[str] = []
+        ks = []
+
+        # First break TAGs and form DAGs and FAs
+
+        if len(initial_conc) != len(list_of_stuff):
+            raise ValueError("initial_conc must have the same length as list_of_fa")
+
+            # Build all unique species once, and REUSE them when building reactions
+        unique_dags = OrderedSet()
+        dag_lookup: Dict[Tuple[str, int], Tuple[str, SymmetricGlyceride]] = (
+            {}
+        )  # (gly.name, fa.name, index) -> DAG + fatty acid
+
+        # list of fatty acids that can only react to either the ends or the middles
+        mid: List[FattyAcid] = []
+        end: List[FattyAcid] = []
+
+        for i in range(len(list_of_stuff)):
+            tag = list_of_stuff[i]
+            fa0, fa1, fa2 = tag.sn
+            if plucked[i] == "end":
+                dag0 = tag.remove_fatty_acid(index=0, fatty_acid=fa0)  # G_None_FA_FA
+                dag2 = tag.remove_fatty_acid(index=2, fatty_acid=fa2)  # G_FA_FA_None
+                unique_dags.add(dag0)
+                unique_dags.add(dag2)
+                dag_lookup[(tag.name, 0)] = (fa0.name, dag0)
+                dag_lookup[(tag.name, 2)] = (fa2.name, dag1)
+                # if the arrangement goes to the end or the middle (sorting)
+                if arranged[i] == "end":
+                    end.append(fa0)
+                    end.append(fa2)
+                else:
+                    mid.append(fa0)
+                    mid.append(fa2)
+            else:  # its mid
+                dag1 = tag.remove_fatty_acid(index=1, fatty_acid=fa1)  # G_FA_None_FA
+                unique_dags.add(dag1)
+                dag_lookup[(tag.name, 1)] = (fa1.name, dag1)
+                if arranged[i] == "end":
+                    end.append(fa1)
+                else:
+                    mid.append(fa1)
+
+        unique_tgs = OrderedSet()
+        tg_lookup: Dict[Tuple[str, str], SymmetricGlyceride] = (
+            {}
+        )  # (dag.name, fa.name) -> TG
+
+        # if dag.sn[1] is None:
+        #     tg1 = dag.add_fatty_acid(index=1, fatty_acid=fa)
+        # elif dag.sn[2] is None:
+        #     tg1 = dag.add_fatty_acid(index=2, fatty_acid=fa)
+        # else:
+        #     raise ValueError("Unexpected diglyceride structure")
+        # unique_tgs.add(tg1)
+        # tg_lookup[(dag.name, fa.name)] = tg1
+
+        for dag in unique_dags:
+            for fa in mid:
+                # if the middle is empty
+                if dag.sn[1] is None:
+                    tg1 = dag.add_fatty_acid(index=1, fatty_acid=fa)
+                    unique_tgs.add(tg1)
+                    tg_lookup[(dag.name, fa.name)] = tg1
+                else:
+                    # or its not and so the ends must be empty
+                    for fa in end:
+                        if dag.sn[0] is None:
+                            tg1 = dag.add_fatty_acid(index=0, fatty_acid=fa)
+                            unique_tgs.add(tg1)
+                            tg_lookup[(dag.name, fa.name)] = tg1
+                        elif dag.sn[2] is None:
+                            tg1 = dag.add_fatty_acid(index=2, fatty_acid=fa)
+                            unique_tgs.add(tg1)
+                            tg_lookup[(dag.name, fa.name)] = tg1
+                        else:
+                            raise ValueError("Unexpected diglyceride structure")
+
+        unique_species = list(OrderedSet.union(unique_dags, unique_tgs))
+        midend = mid + end  # Combine the two lists together
+        init_tags = [init_tags.name for init_tags in list_of_stuff]
+        fa_names = [fa.name for fa in midend]
+        gly_names = [specie.name for specie in unique_species]
+        species_names = [*fa_names, *OrderedSet(gly_names + init_tags)]
+        species_idx = {nm: i for i, nm in enumerate(species_names)}
+        ns = len(species_names)
+        # print(*[f"Printing species [{i}] -> \n{x}" for i, x in enumerate(unique_species)], sep='\n')
+        # print("Printing midend array:\n")
+        # print(*[f"Printing midend[{i}] -> \n {x}" for i, x in enumerate(midend)], sep='\n')
+        # print(*[f"Printing initial tag [{i}] -> \n {x}" for i, x in enumerate(init_tags)], sep='\n')
+        # print("Printing fatty acid names: \n")
+        # print(fa_names)
+        # print("\nPrinting gly_names: \n")
+        # print(gly_names)
+        # print("\nPrinting species names: \n")
+        # print(*[f"\nPrinting unique specices [{i}] -> \n {x}" for i, x in enumerate(species_names)], sep='\n')
+        # print(ns)
+
+        # build reaction names
+        for i, tag in enumerate(list_of_stuff):
+            plucked_value = plucked[i]
+            if plucked_value == "end":
+                fa0, dag0 = dag_lookup[(tag.name, 0)]
+                fa2, dag2 = dag_lookup[(tag.name, 2)]
+                dag0 = dag0.name
+                dag2 = dag2.name
+                ChemReactSim._add_rxn(
+                    react_stoic,
+                    prod_stoic,
+                    rxn_names,
+                    ks,
+                    species_idx,
+                    reactants=[tag.name],
+                    products=[dag0, fa0],
+                    k=1.0,
+                    name=f"{tag.name} => {dag0} + {fa0}",
+                )
+                ChemReactSim._add_rxn(
+                    react_stoic,
+                    prod_stoic,
+                    rxn_names,
+                    ks,
+                    species_idx,
+                    reactants=[tag.name],
+                    products=[dag2, fa2],
+                    k=1.0,
+                    name=f"{tag.name} => {dag2} + {fa2}",
+                )
+            else:
+                fa1, dag1 = dag_lookup[(tag.name, 1)]
+                dag1 = dag1.name
+                ChemReactSim._add_rxn(
+                    react_stoic,
+                    prod_stoic,
+                    rxn_names,
+                    ks,
+                    species_idx,
+                    reactants=[tag.name],
+                    products=[dag1, fa1],
+                    k=1.0,
+                    name=f"{tag.name} => {dag1} + {fa1}",
+                )
+
+        # Build TG reactions (reuse prebuilt TGs)
+        for dag in unique_dags:
+            if dag.sn[1] is not None:
+                for fa in end:
+                    tg1 = tg_lookup[(dag.name, fa.name)].name
+                    ChemReactSim._add_rxn(
+                        react_stoic,
+                        prod_stoic,
+                        rxn_names,
+                        ks,
+                        species_idx,
+                        reactants=[dag.name, fa.name],
+                        products=[tg1],
+                        k=2.0,
+                        name=f"{dag.name} + {fa.name} => {tg1}",
+                    )
+            else:
+                for fa in mid:
+                    tg1 = tg_lookup[(dag.name, fa.name)].name
+                    ChemReactSim._add_rxn(
+                        react_stoic,
+                        prod_stoic,
+                        rxn_names,
+                        ks,
+                        species_idx,
+                        reactants=[dag.name, fa.name],
+                        products=[tg1],
+                        k=1.0,
+                        name=f"{dag.name} + {fa.name} => {tg1}",
+                    )
+
+        # Initial state vector
+        init_state = np.zeros(len(species_names), dtype=float)
+        for gly, c0 in zip(list_of_stuff, initial_conc[0:]):
+            init_state[species_idx[gly.name]] = float(c0)
+
+        # Convert list of column vectors into full (ns, nr) matrices
+        react_stoic = (
+            np.hstack(react_stoic)
+            if len(react_stoic)
+            else np.zeros((ns, 0), dtype=float)
+        )
+        prod_stoic = (
+            np.hstack(prod_stoic) if len(prod_stoic) else np.zeros((ns, 0), dtype=float)
+        )
+
+        ks = np.asarray(ks, dtype=float)
+
+        # # sanity checks
+        # ns = len(species_names)
+        # nr = len(rxn_names)
+        # assert react_stoic.shape == (
+        #     ns,
+        #     nr,
+        # ), f"react_stoic shape {react_stoic.shape} != (ns, nr)=({ns}, {nr})"
+        # assert prod_stoic.shape == (
+        #     ns,
+        #     nr,
+        # ), f"prod_stoic shape {prod_stoic.shape} != (ns, nr)=({ns}, {nr})"
+        # assert ks.shape == (nr,), f"k_det shape {ks.shape} != (nr,)={nr}"
+        # assert init_state.shape == (
+        #     ns,
+        # ), f"init_state shape {init_state.shape} != (ns,)={ns}"
+
+        # print("Species index mapping:")
+        # for i, nm in enumerate(species_names):
+        #     print(f"  [{i:2d}] {nm}")
+        # print()
+        # print("First few reactions and stoichiometry rows:")
+        # for i in range(min(5, len(rxn_names))):
+        #     print(f"{i:3d}: {rxn_names[i]}")
+        #     print("    Reactants:", np.where(react_stoic.T[i] != 0)[0])
+        #     print("    Products: ", np.where(prod_stoic.T[i] != 0)[0])
+        # print()
+        # np.set_printoptions(linewidth=np.inf)
+        # print(f"Printing species names: {species_names}")
+        # print(
+        #     f"Printing reaction stoichiometry:\nReactants:\n{np.array2string(react_stoic.T)}\nProducts:\n{np.array2string(prod_stoic.T)}"
+        # )
+        # print(f"Printing Initial state: {init_state}")
+        # print(f"Printing rate constants: {ks}")
+        # print(f"Printing shape of reactant stoichiometry: {react_stoic.shape}")
 
         return PKineticSim(
             species_names=species_names,

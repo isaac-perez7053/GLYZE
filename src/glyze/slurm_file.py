@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import subprocess
 import time
 from typing import Optional
-from symmstate.slurm.slurm_header import SlurmHeader
+import os
+from glyze.slurm_header import SlurmHeader
 
 
 class SlurmFile:
@@ -97,7 +100,7 @@ class SlurmFile:
             script_content += f"\n\n{extra_commands}\n"
 
         # Write the script to disk
-        batch_name = get_unique_filename(batch_name)
+        batch_name = SlurmFile._get_unique_filename(batch_name)
         with open(batch_name, "w") as script_file:
             script_file.write(script_content)
 
@@ -267,3 +270,29 @@ class SlurmFile:
                 )
             else:
                 print("All jobs completed or cancelled successfully!")
+
+    @staticmethod
+    def _get_unique_filename(path: str) -> str:
+        """
+        Return a unique filename by appending _1, _2, ... if the file exists.
+
+        Example:
+            get_unique_filename("/tmp/job.slurm") ->
+                "/tmp/job.slurm"       (if unused)
+            get_unique_filename("/tmp/job.slurm") ->
+                "/tmp/job_1.slurm"     (if job.slurm exists)
+        """
+        path = os.path.abspath(path)
+
+        directory, filename = os.path.split(path)
+        name, ext = os.path.splitext(filename)
+
+        candidate = path
+        counter = 1
+
+        # Keep adding _<number> until unused
+        while os.path.exists(candidate):
+            candidate = os.path.join(directory, f"{name}_{counter}{ext}")
+            counter += 1
+
+        return candidate
