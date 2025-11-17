@@ -379,35 +379,3 @@ class PackmolSimulator:
 
         input_path.write_text("\n".join(lines))
         return input_path
-
-
-if __name__ == "__main__":
-    sim = PackmolSimulator("~/bin/packmol")
-
-    pdb_files = ["MDAPMinput0.pdb", "MDAPMinput1.pdb"]
-
-    # Say you already computed integer counts from your mix
-    concentrations = [1.0, 1.0]  # relative concentrations
-    total_mols = 20
-
-    counts = sim.compute_particle_counts(total_mols, concentrations)
-    molar_masses = [860.0, 890.0]  # g/mol for each glyceride species (example)
-
-    L = sim.estimate_cubic_box_length_from_species(
-        counts=counts,
-        molar_masses_g_per_mol=molar_masses,
-        density_g_per_cm3=0.9,
-    )
-
-    inp = sim.build_input_file(
-        structure_files=pdb_files,
-        counts=counts,
-        box_lengths=L,
-        tolerance=2.0,
-        filetype="pdb",
-        output="output.pdb",
-    )
-
-    result = sim.execute_packmol(inp)
-    print("Return code:", result.returncode)
-    print(result.stdout.decode() if result.stdout else "")
