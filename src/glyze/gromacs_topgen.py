@@ -542,7 +542,7 @@ def execute_multiwfn_cm5(
 def read_cm5_xyzq_table(path: str):
     """
     Parse a Multiwfn dump with lines: Element  x  y  z  charge
-    Returns (elements: [str], coords: (N,3) float Å, charges: (N,) float).
+    Returns (elements: [str], coords: (N,3) float angstroms, charges: (N,) float).
     """
     import numpy as np
 
@@ -667,7 +667,7 @@ def parse_cm5_from_multiwfn(
 def assign_cm5_to_mol_by_coords(mol: Chem.Mol, xyzq_path: str, tol=0.2):
     """
     Read CM5 (EL x y z q) and attach q to RDKit atoms via nearest-neighbor
-    coordinate matching (Å). If counts match and RMSD small, assumes same order.
+    coordinate matching (angstroms). If counts match and RMSD small, assumes same order.
     """
     import numpy as np
 

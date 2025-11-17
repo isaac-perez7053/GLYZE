@@ -240,6 +240,7 @@ class GlycerideMix:
             self._mol_by_glyceride[glyceride] = mol
 
     def total_quantity(self) -> float:
+        """Calculate the total quantity of all glycerides in the mix."""
         return sum(self.mix.values())
 
     def build_simulation_box(
@@ -416,6 +417,26 @@ class GlycerideMix:
         output_pdb="mixture.pdb",
         tolerance=2.0,
     ) -> str:
+        """
+        Generate a Packmol input file content for the given mixture.
+
+        Parameters
+        ----------
+        items : list of dict
+            Each dict should have keys: 'pdb' (str), 'count' (int
+            'resname' (str).
+        box : tuple of float
+            Box dimensions (Lx, Ly, Lz).
+        output_pdb : str
+            Output PDB filename.
+        tolerance : float
+            Minimum distance tolerance for Packmol.
+        
+        Returns
+        -------
+        str
+            The content of the Packmol input file.
+        """
         Lx, Ly, Lz = box
         lines = [f"tolerance {tolerance}", "filetype pdb", f"output {output_pdb}", ""]
         for it in items:

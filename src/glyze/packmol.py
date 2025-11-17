@@ -15,6 +15,12 @@ class PackmolSimulator:
     Small helper around Packmol: manages the executable path, builds input
     files, computes integer species counts from relative concentrations, and
     executes Packmol.
+
+    Parameters
+    ----------
+    packmol_path
+        Path to the Packmol executable. Can be relative and/or use '~'.
+        If None, 'packmol' from the environment PATH will be used.  
     """
 
     def __init__(self, packmol_path: Optional[Union[str, Path]] = None):
@@ -39,7 +45,7 @@ class PackmolSimulator:
         total_mass_g: Optional[float] = None,
     ) -> float:
         """
-        Estimate cubic box length L (Å) from number of molecules and density.
+        Estimate cubic box length L (angstroms) from number of molecules and density.
 
         Physics: rho = m / V, V = L^3.
 
@@ -84,7 +90,7 @@ class PackmolSimulator:
         density_g_per_cm3: float = 0.9,
     ) -> float:
         """
-        Convenience variant: compute L (Å) directly from per-species counts
+        Convenience variant: compute L (angstroms) directly from per-species counts
         and molar masses.
 
         For each species i:
@@ -105,7 +111,7 @@ class PackmolSimulator:
         Returns
         -------
         float
-            Box length L in Å for a cubic box.
+            Box length L in angstroms for a cubic box.
         """
         if len(counts) != len(molar_masses_g_per_mol):
             raise ValueError(

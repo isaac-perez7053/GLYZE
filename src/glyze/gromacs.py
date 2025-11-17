@@ -16,6 +16,18 @@ from glyze.utils import replace_resnames_by_chain
 
 @dataclass
 class SimPaths:
+    """
+    Standardized directory structure for GROMACS simulations.
+    
+    Attributes
+    ----------
+    root : Path
+        Root directory for the simulation.
+    ffdir : Path
+        Directory containing force field files.
+    name : str, optional
+        Name of the simulation (default "glycerides").
+    """
     root: Path
     ffdir: Path
     name: str = "glycerides"
@@ -62,6 +74,18 @@ class GromacsSimulator:
        - init.pdb, conf.gro, topol.top, em.gro, system.top
     2. Equilibrate (NPT -> NVT)
     3. Production + viscosity (Green-Kubo or NEMD)
+
+    Parameters
+    ----------
+    mix : GlycerideMix
+        The glyceride mixture to simulate.
+    paths : SimPaths
+        Standardized paths for the simulation.
+    gmx_bin : str | Path | None
+        Path to GROMACS 'gmx' executable. If None, uses 'gmx' from PATH.
+    gmxlib : str | Path | None
+        Path to GROMACS library directory (GMXLIB). If None, attempts to detect
+        from the 'gmx' executable location.
     """
 
     def __init__(
@@ -453,6 +477,10 @@ class GromacsSimulator:
         gro_out: str = "init.gro",
         distance: float = 1.0,
     ):
+        """
+        Call GlycerideMix.build_simulation_box and sanitize residue names.
+        Returns an MDAnalysis.Universe.
+        """
 
         env = self._gmx_env()
         gmx = self._gmx_executable()
@@ -716,110 +744,6 @@ class GromacsSimulator:
             "em_gro": em_gro,
         }
 
-    def run_npt_equilibration(
-        self,
-        T: float,
-        P: float,
-        ns: float = 2.0,
-        tau_t: float = 1.0,
-        tau_p: float = 5.0,
-        start_gro: str | Path | None = None,
-        top: str | Path | None = None,
-        maxwarn: int = 6,
-    ) -> Path:
-        """
-        Run NPT equilibration (densify).
-
-        Parameters
-        ----------
-        T : float
-            Target temperature (K).
-        P : float
-            Target pressure (bar).
-        ns : float
-            Length of NPT run in nanoseconds.
-        tau_t : float
-            Temperature coupling time constant (ps).
-        tau_p : float
-            Pressure coupling time constant (ps).
-        start_gro : str | Path | None
-            Input configuration (.gro). If None, uses build/em.gro.
-        top : str | Path | None
-            Topology file (.top). If None, uses build/system.top.
-
-        Returns
-        -------
-        Path
-            Path to npt.gro in self.paths.npt.
-        """
-        npt_dir = self.paths.npt
-        npt_dir.mkdir(parents=True, exist_ok=True)
-
-        if start_gro is None:
-            start_gro = self.paths.build / "em.gro"
-        if top is None:
-            top = self.paths.build / "system.top"
-
-        start_gro = Path(start_gro)
-        top = Path(top)
-
-        env = self._gmx_env()
-        gmx = self._gmx_executable()
-
-        # Write NPT MDP
-        npt_mdp = npt_dir / "npt.mdp"
-        self._write_npt_mdp(npt_mdp, T=T, P=P, ns=ns, tau_t=tau_t, tau_p=tau_p)
-        npt_tpr = npt_dir / "npt.tpr"
-
-        # grompp (NPT)
-        grompp_cmd = [
-            gmx,
-            "grompp",
-            "-f",
-            npt_mdp.name,
-            "-c",
-            str(start_gro),
-            "-p",
-            str(top),
-            "-o",
-            npt_tpr.name,
-            "-maxwarn",
-            str(maxwarn),
-        ]
-        result = subprocess.run(
-            grompp_cmd,
-            cwd=str(npt_dir),
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        print("grompp (NPT) stdout:\n", result.stdout)
-        print("grompp (NPT) stderr:\n", result.stderr)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"grompp (NPT) failed with exit code {result.returncode}"
-            )
-
-        # mdrun (NPT)
-        mdrun_cmd = [gmx, "mdrun", "-deffnm", "npt"]
-        result = subprocess.run(
-            mdrun_cmd,
-            cwd=str(npt_dir),
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        print("mdrun (NPT) stdout:\n", result.stdout)
-        print("mdrun (NPT) stderr:\n", result.stderr)
-        if result.returncode != 0:
-            raise RuntimeError(f"mdrun (NPT) failed with exit code {result.returncode}")
-
-        npt_gro = npt_dir / "npt.gro"
-        if not npt_gro.exists():
-            raise RuntimeError("NPT equilibration did not produce npt.gro.")
-
-        return npt_gro
-
     def run_nvt_equilibration(
         self,
         T: float,
@@ -841,7 +765,7 @@ class GromacsSimulator:
         tau_t : float
             Temperature coupling time constant (ps).
         start_gro : str | Path | None
-            Input configuration (.gro). If None, uses npt/npt.gro.
+            Input configuration (.gro). If None, uses 00_build/em.gro.
         top : str | Path | None
             Topology file (.top). If None, uses build/system.top.
 
@@ -854,7 +778,7 @@ class GromacsSimulator:
         nvt_dir.mkdir(parents=True, exist_ok=True)
 
         if start_gro is None:
-            start_gro = self.paths.npt / "npt.gro"
+            start_gro = self.paths.build / "em.gro"
         if top is None:
             top = self.paths.build / "system.top"
 
@@ -917,6 +841,110 @@ class GromacsSimulator:
             raise RuntimeError("NVT equilibration did not produce nvt.gro.")
 
         return nvt_gro
+
+    def run_npt_equilibration(
+        self,
+        T: float,
+        P: float,
+        ns: float = 2.0,
+        tau_t: float = 1.0,
+        tau_p: float = 5.0,
+        start_gro: str | Path | None = None,
+        top: str | Path | None = None,
+        maxwarn: int = 6,
+    ) -> Path:
+        """
+        Run NPT equilibration (densify).
+
+        Parameters
+        ----------
+        T : float
+            Target temperature (K).
+        P : float
+            Target pressure (bar).
+        ns : float
+            Length of NPT run in nanoseconds.
+        tau_t : float
+            Temperature coupling time constant (ps).
+        tau_p : float
+            Pressure coupling time constant (ps).
+        start_gro : str | Path | None
+            Input configuration (.gro). If None, uses 10_eq_npt/nvt.gro.
+        top : str | Path | None
+            Topology file (.top). If None, uses build/system.top.
+
+        Returns
+        -------
+        Path
+            Path to npt.gro in self.paths.npt.
+        """
+        npt_dir = self.paths.npt
+        npt_dir.mkdir(parents=True, exist_ok=True)
+
+        if start_gro is None:
+            start_gro = self.paths.nvt / "nvt.gro"
+        if top is None:
+            top = self.paths.build / "system.top"
+
+        start_gro = Path(start_gro)
+        top = Path(top)
+
+        env = self._gmx_env()
+        gmx = self._gmx_executable()
+
+        # Write NPT MDP
+        npt_mdp = npt_dir / "npt.mdp"
+        self._write_npt_mdp(npt_mdp, T=T, P=P, ns=ns, tau_t=tau_t, tau_p=tau_p)
+        npt_tpr = npt_dir / "npt.tpr"
+
+        # grompp (NPT)
+        grompp_cmd = [
+            gmx,
+            "grompp",
+            "-f",
+            npt_mdp.name,
+            "-c",
+            str(start_gro),
+            "-p",
+            str(top),
+            "-o",
+            npt_tpr.name,
+            "-maxwarn",
+            str(maxwarn),
+        ]
+        result = subprocess.run(
+            grompp_cmd,
+            cwd=str(npt_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        print("grompp (NPT) stdout:\n", result.stdout)
+        print("grompp (NPT) stderr:\n", result.stderr)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"grompp (NPT) failed with exit code {result.returncode}"
+            )
+
+        # mdrun (NPT)
+        mdrun_cmd = [gmx, "mdrun", "-deffnm", "npt"]
+        result = subprocess.run(
+            mdrun_cmd,
+            cwd=str(npt_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        print("mdrun (NPT) stdout:\n", result.stdout)
+        print("mdrun (NPT) stderr:\n", result.stderr)
+        if result.returncode != 0:
+            raise RuntimeError(f"mdrun (NPT) failed with exit code {result.returncode}")
+
+        npt_gro = npt_dir / "npt.gro"
+        if not npt_gro.exists():
+            raise RuntimeError("NPT equilibration did not produce npt.gro.")
+
+        return npt_gro
 
     def equilibrate(
         self,
