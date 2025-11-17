@@ -253,7 +253,7 @@ class GlycerideMix:
     ) -> mda.Universe:
         """
         Pack a homogeneous mixture of triglycerides into a cubic box at a target density.
-        Returns an MDAnalysis.Universe; coordinates in Å and unit cell set.
+        Returns an MDAnalysis.Universe; coordinates in angstroms and unit cell set.
 
         This version uses PackmolSimulator to:
         - compute the cubic box length from counts + molar masses and density
