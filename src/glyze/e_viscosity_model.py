@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
-import os
+import os, subprocess
 
 from glyze.glyceride import Glyceride
 from glyze.glyceride_mix import GlycerideMix
 from glyze.gromacs import GromacsSimulator, SimPaths
+from glyze.analysis import GromacsViscosityAnalysis
+from glyze.slurm_file import SlurmFile
 from glyze.gromacs_topgen import (
     execute_multiwfn_cm5,
     parse_cm5_from_multiwfn,
@@ -122,16 +124,16 @@ class EViscosityModel:
 
     mix: GlycerideMix
     paths: SimPaths
-    fchk_paths: List[Path]  
-    pdb_paths: List[Path] 
+    fchk_paths: List[Path]
+    pdb_paths: List[Path]
     resname_map: Dict[Glyceride, str]
 
     # Executables: if None, rely on PATH; if given paths, they are expanded to abs
     multiwfn_exe: Optional[str | Path] = None
     multiwfn_script: Optional[str | Path] = None  # e.g. "cm5_menu.txt"
-    gmx_bin: Optional[str | Path] = None 
-    gmxlib: Optional[str | Path] = None  
-    packmol_exe: Optional[str | Path] = None  
+    gmx_bin: Optional[str | Path] = None
+    gmxlib: Optional[str | Path] = None
+    packmol_exe: Optional[str | Path] = None
 
     ff_name: str = "oplsaa"  # e.g. "oplsaa" -> "oplsaa.ff/forcefield.itp"
 
@@ -371,20 +373,22 @@ class EViscosityModel:
         T: float,
         ns: float = 2.0,
         tau_t: float = 1.0,
+        slurm: SlurmFile | None = None,
     ) -> Path:
         """
         Run NVT equilibration (thermalize at fixed density).
         Uses npt.gro as input if not specified.
         """
-        if self.npt_gro is None:
-            raise RuntimeError("npt_gro not set. Run run_npt_equilibration() first.")
+        if self.em_gro is None:
+            raise RuntimeError("em_gro not set. Run run_energy_minimization() first.")
 
         self.nvt_gro = self.gmx_sim.run_nvt_equilibration(
             T=T,
             ns=ns,
             tau_t=tau_t,
-            start_gro=self.em_gro,
+            start_gro=self.npt_gro,
             top=self.system_top or (self.paths.build / "system.top"),
+            slurm=slurm,
         )
         return self.nvt_gro
 
@@ -395,12 +399,13 @@ class EViscosityModel:
         ns: float = 2.0,
         tau_t: float = 1.0,
         tau_p: float = 5.0,
+        slurm: SlurmFile | None = None,
     ) -> Path:
         """
         Run NPT equilibration (densify). Uses em.gro as input if not specified.
         """
-        if self.em_gro is None:
-            raise RuntimeError("em_gro not set. Run run_energy_minimization() first.")
+        if self.nvt_gro is None:
+            raise RuntimeError("nvt_gro not set. Run run_nvt_equilibration() first.")
 
         self.npt_gro = self.gmx_sim.run_npt_equilibration(
             T=T,
@@ -410,6 +415,7 @@ class EViscosityModel:
             tau_p=tau_p,
             start_gro=self.nvt_gro,
             top=self.system_top or (self.paths.build / "system.top"),
+            slurm=slurm,
         )
         return self.npt_gro
 
@@ -424,3 +430,174 @@ class EViscosityModel:
         if self.nvt_gro is None:
             raise RuntimeError("nvt_gro not set. Run run_nvt_equilibration() first.")
         return self.gmx_sim.production(T=T, ns=ns)
+
+    def run_pp_viscosity_sweep(
+        self,
+        T: float,
+        ns: float,
+        A_min: float,
+        A_max: float,
+        num_datapoints: int = 6,
+        dt: float = 0.001,
+        maxwarn: int = 10,
+        slurm: SlurmFile | None = None,
+    ) -> List[Tuple[float, Path]]:
+        """
+        Run a periodic-perturbation viscosity calculation for a range of
+        cosine accelerations A between A_min and A_max.
+
+        Parameters
+        ----------
+        T (float)
+            Temperature to run the system at
+        ns (float)
+            Total time to run the simulation
+        A_min (float)
+            Minimum cos-acceleration amplitude
+        A_max (float)
+            Maximum cos-acceleration amplitude
+        num_datapoints (int)
+            Number of cos-acceleration amplitudes to simulate. More will
+            likely lead to a much more trustworthy measurement of viscosity
+        dt (float)
+            Time step for the simulation
+        maxwarn (int)
+            Max number of warnings that can be raised by grompp
+        slurm (SlurmFile)
+            Slurm file to be used if you would like to submit jobs using SLURM
+
+        Returns
+        -------
+        list of (A, edr_path)
+            One entry per PP run: the amplitude and the resulting .edr file.
+        """
+        # Check if the following files exist before running
+        if self.npt_gro is None:
+            raise RuntimeError("npt_gro not set. Run run_npt_equilibration() first.")
+        if self.system_top is None:
+            raise RuntimeError("system_top not set. Run build_gromacs_system() first.")
+        if num_datapoints < 1:
+            raise ValueError("num_datapoints must be >= 1")
+
+        # Generate a list of amplitudes (use single point in the case of A_min == A_max)
+        if num_datapoints == 1 or A_min == A_max:
+            amplitudes = [0.5 * (A_min + A_max)]
+        else:
+            step = (A_max - A_min) / (num_datapoints - 1)
+            amplitudes = [A_min + i * step for i in range(num_datapoints)]
+
+        results: List[Tuple[float, Path]] = []
+
+        # Run viscosity calculation for various amplitudes
+        for A in amplitudes:
+            edr_path = self.gmx_sim.run_viscosity_pp(
+                T=T,
+                ns=ns,
+                cos_acceleration=A,
+                dt=dt,
+                maxwarn=maxwarn,
+                start_gro=self.npt_gro,
+                top=self.system_top,
+                slurm=slurm,
+            )
+            # Create a list of amplitudes and paths to .edr (results) file
+            results.append((A, edr_path))
+        return results
+
+    def analyze_results(
+        self, pp_runs: List[Tuple[float, Path]], ns_per_A: float, T: float
+    ) -> None:
+        L_values = []
+        inveta_xvg_files = []
+        temp_xvg_files = []
+
+        for L, edr_path in pp_runs:
+            edr_path = Path(edr_path)
+            run_dir = edr_path.parent
+
+            tag = f"{L:.5f}".replace(".", "")  # 0.01000 -> "001000"
+            inveta_xvg = run_dir / f"pp_L{tag}_{int(ns_per_A)}ns_visc.xvg"
+            temp_xvg = run_dir / f"pp_L{tag}_{int(ns_per_A)}ns_temp.xvg"
+
+            self._extract_pp_xvg_for_run(
+                edr_path=edr_path,
+                inveta_xvg=inveta_xvg,
+                temp_xvg=temp_xvg,
+            )
+
+            L_values.append(L)
+            inveta_xvg_files.append(inveta_xvg)
+            temp_xvg_files.append(temp_xvg)
+
+        analysis = GromacsViscosityAnalysis()
+
+        fit = analysis.analyze_pp_from_xvg(
+            L_values=L_values,
+            inveta_xvg=inveta_xvg_files,
+            temp_xvg=temp_xvg_files,
+            tmin_ns=2.0,
+            block_ns=3.0,
+        )
+
+        print(f"PP viscosity at {T:.1f} K:")
+        print(f"  eta0 = {fit.eta0_cP:.3f} ± {fit.eta0_cP_err:.3f} cP")
+        print(f"  R^2(eta(L)) = {fit.r2:.4f}")
+        if fit.qc_warnings:
+            print("QC warnings:")
+            for msg in fit.qc_warnings:
+                print(f"  - {msg}")
+        else:
+            print("QC: no warnings")
+
+        print("\nPer-amplitude points:")
+        for p in fit.points:
+            print(
+                f"L={p.L:.5f}, "
+                f"eta={p.eta_cP:.3f} pm {p.eta_cP_sem:.3f} cP, "
+                f"Tmean={p.temp_mean_K if p.temp_mean_K is not None else float('nan'):.2f} K"
+            )
+
+    def _extract_pp_xvg_for_run(
+        self,
+        edr_path: Path,
+        inveta_xvg: Path,
+        temp_xvg: Path,
+    ) -> None:
+        """
+        Helper: run `gmx energy` on a PP .edr file to get 1/eta(t) and T(t) XVG.
+
+        inveta_term should be the exact name or index that selects 1/eta
+        in the `gmx energy` menu for your PP runs.
+        """
+        edr_path = Path(edr_path)
+        cwd = edr_path.parent
+        gmx = self.gmx_sim._gmx_executable()
+        env = self.gmx_sim._gmx_env()
+
+        # 1/eta(t)
+        proc1 = subprocess.run(
+            [gmx, "energy", "-f", edr_path.name, "-o", inveta_xvg.name],
+            cwd=cwd,
+            env=env,
+            input=f"39\n0\n",
+            text=True,
+            capture_output=True,
+        )
+        if proc1.returncode != 0:
+            raise RuntimeError(
+                f"gmx energy for inveta failed on {edr_path}:\n{proc1.stdout}\n{proc1.stderr}"
+            )
+
+        # Temperature(t)
+        proc2 = subprocess.run(
+            [gmx, "energy", "-f", edr_path.name, "-o", temp_xvg.name],
+            cwd=cwd,
+            env=env,
+            input=f"15\n0\n",
+            text=True,
+            capture_output=True,
+        )
+        if proc2.returncode != 0:
+            raise RuntimeError(
+                f"gmx energy for temperature failed on {edr_path}:\n{proc2.stdout}\n{proc2.stderr}"
+            )

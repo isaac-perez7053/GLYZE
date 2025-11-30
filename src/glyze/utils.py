@@ -90,8 +90,8 @@ def _read_fchk_coords(fchk_path, labels=None, assume_bohr=True):
     """
     if labels is None:
         labels = [
-            "Current cartesian coordinates",  
-            "Cartesian Coordinates",  
+            "Current cartesian coordinates",
+            "Cartesian Coordinates",
         ]
 
     with open(fchk_path, "r") as f:

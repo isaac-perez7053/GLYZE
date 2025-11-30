@@ -12,13 +12,14 @@ import subprocess
 import os
 import shutil
 from glyze.utils import replace_resnames_by_chain
+from glyze.slurm_file import SlurmFile
 
 
 @dataclass
 class SimPaths:
     """
     Standardized directory structure for GROMACS simulations.
-    
+
     Attributes
     ----------
     root : Path
@@ -28,6 +29,7 @@ class SimPaths:
     name : str, optional
         Name of the simulation (default "glycerides").
     """
+
     root: Path
     ffdir: Path
     name: str = "glycerides"
@@ -47,11 +49,11 @@ class SimPaths:
 
     @property
     def npt(self) -> Path:
-        return self.workdir / "10_eq_npt"
+        return self.workdir / "10_eq_nvt"
 
     @property
     def nvt(self) -> Path:
-        return self.workdir / "20_eq_nvt"
+        return self.workdir / "20_eq_npt"
 
     @property
     def prod(self) -> Path:
@@ -122,6 +124,77 @@ class GromacsSimulator:
         if self._gmx_bin_path is not None:
             return str(self._gmx_bin_path)
         return "gmx"
+
+    def _run_mdrun(
+        self,
+        workdir: Path,
+        deffnm: str,
+        *,
+        slurm: SlurmFile | None = None,
+        job_name: str | None = None,
+        log_name: str | None = None,
+    ) -> None:
+        """
+        Run GROMACS `mdrun` either directly or via SLURM (SlurmFile).
+
+        Parameters
+        ----------
+        workdir
+            Directory where the .tpr lives and where GROMACS should run.
+        deffnm
+            -deffnm name (tpr/edr/log/trr prefix).
+        slurm
+            If provided, a SlurmFile configured with a GROMACS-friendly
+            mpi_command_template.
+        job_name
+            Optional SLURM job name / script base name.
+        log_name
+            Optional log file name (used only by SlurmFile).
+        """
+        env = self._gmx_env()
+        gmx = self._gmx_executable()
+
+        if slurm is None:
+            # Local mdrun
+            mdrun_cmd = [gmx, "mdrun", "-deffnm", deffnm]
+            result = subprocess.run(
+                mdrun_cmd,
+                cwd=str(workdir),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            print(f"mdrun ({deffnm}) stdout:\n", result.stdout)
+            print(f"mdrun ({deffnm}) stderr:\n", result.stderr)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"mdrun ({deffnm}) failed with exit code {result.returncode}"
+                )
+            return
+
+        # SLURM mode
+        prev_cwd = os.getcwd()
+        try:
+            os.chdir(workdir)
+
+            script_name = f"{job_name or deffnm}.slurm"
+            log_name = log_name or f"{deffnm}.log"
+
+            batch_script = slurm.write(
+                input_file=deffnm,  # goes into {input_file} placeholder
+                log_file=log_name,  # goes into {log} placeholder
+                batch_name=script_name,
+            )
+            job_id = slurm.submit_job(batch_script)
+            if job_id is None:
+                raise RuntimeError(
+                    f"Failed to submit SLURM job for {deffnm} (script {batch_script})"
+                )
+
+            # Block until job done
+            slurm.wait()
+        finally:
+            os.chdir(prev_cwd)
 
     def _detect_gmxlib_from_executable(self) -> Path:
         """
@@ -730,7 +803,7 @@ class GromacsSimulator:
             title="Glyceride mixture (CM5)",
         )
 
-        # Energy minimization   
+        # Energy minimization
         em_gro = self._run_energy_minimization(
             build_dir=build_dir,
             gro_path=gro_path,
@@ -752,6 +825,7 @@ class GromacsSimulator:
         start_gro: str | Path | None = None,
         top: str | Path | None = None,
         maxwarn: int = 6,
+        slurm: SlurmFile | None = None,
     ) -> Path:
         """
         Run NVT equilibration (thermalize at fixed density).
@@ -822,19 +896,13 @@ class GromacsSimulator:
                 f"grompp (NVT) failed with exit code {result.returncode}"
             )
 
-        # mdrun (NVT)
-        mdrun_cmd = [gmx, "mdrun", "-deffnm", "nvt"]
-        result = subprocess.run(
-            mdrun_cmd,
-            cwd=str(nvt_dir),
-            env=env,
-            capture_output=True,
-            text=True,
+        self._run_mdrun(
+            workdir=nvt_dir,
+            deffnm="nvt",
+            slurm=slurm,
+            job_name="nvt",
+            log_name="nvt.log",
         )
-        print("mdrun (NVT) stdout:\n", result.stdout)
-        print("mdrun (NVT) stderr:\n", result.stderr)
-        if result.returncode != 0:
-            raise RuntimeError(f"mdrun (NVT) failed with exit code {result.returncode}")
 
         nvt_gro = nvt_dir / "nvt.gro"
         if not nvt_gro.exists():
@@ -852,6 +920,7 @@ class GromacsSimulator:
         start_gro: str | Path | None = None,
         top: str | Path | None = None,
         maxwarn: int = 6,
+        slurm: SlurmFile | None = None,
     ) -> Path:
         """
         Run NPT equilibration (densify).
@@ -926,19 +995,13 @@ class GromacsSimulator:
                 f"grompp (NPT) failed with exit code {result.returncode}"
             )
 
-        # mdrun (NPT)
-        mdrun_cmd = [gmx, "mdrun", "-deffnm", "npt"]
-        result = subprocess.run(
-            mdrun_cmd,
-            cwd=str(npt_dir),
-            env=env,
-            capture_output=True,
-            text=True,
+        self._run_mdrun(
+            workdir=npt_dir,
+            deffnm="npt",
+            slurm=slurm,
+            job_name="npt",
+            log_name="npt.log",
         )
-        print("mdrun (NPT) stdout:\n", result.stdout)
-        print("mdrun (NPT) stderr:\n", result.stderr)
-        if result.returncode != 0:
-            raise RuntimeError(f"mdrun (NPT) failed with exit code {result.returncode}")
 
         npt_gro = npt_dir / "npt.gro"
         if not npt_gro.exists():
@@ -954,6 +1017,9 @@ class GromacsSimulator:
         nvt_ns: float = 2.0,
         tau_t: float = 1.0,
         tau_p: float = 5.0,
+        *,
+        slurm: SlurmFile | None = None,
+        maxwarn: int = 6,
     ) -> dict:
         """
         Convenience wrapper: NPT (densify) -> NVT (thermalize).
@@ -964,12 +1030,15 @@ class GromacsSimulator:
             ns=npt_ns,
             tau_t=tau_t,
             tau_p=tau_p,
+            maxwarn=maxwarn,
+            slurm=slurm,
         )
         nvt_gro = self.run_nvt_equilibration(
             T=T,
             ns=nvt_ns,
             tau_t=tau_t,
             start_gro=npt_gro,
+            slurm=slurm,
         )
         top = self.paths.build / "system.top"
         return {"npt_gro": npt_gro, "nvt_gro": nvt_gro, "top": top}
@@ -1037,18 +1106,110 @@ class GromacsSimulator:
         return prod_dir / "prod.edr"
 
     def viscosity_green_kubo(self) -> Path:
-        """
-        Post-process equilibrium production with Green-Kubo.
-        Placeholder: implement your own viscosity calculator here.
-        """
-        pass
+        raise NotImplementedError(
+            "Green-Kubo viscosity post-processing is not implemented in this helper. "
+            "Use the production trajectory/energies and analyze them externally."
+        )
 
-    def viscosity_nemd(self, T: float, shear_rate_ps: float, ns: float = 5.0) -> Path:
-        """
-        NEMD viscosity via imposed shear.
-        Placeholder: implement your own NEMD scheme / analysis here.
-        """
-        pass
+    def run_viscosity_pp(
+        self,
+        T: float,
+        ns: float,
+        cos_acceleration: float,
+        dt: float = 0.001,
+        maxwarn: int = 10,
+        start_gro: str | Path | None = None,
+        top: str | Path | None = None,
+        slurm: SlurmFile | None = None,
+    ) -> Path:
+        dt = 0.001
+        prod_root = self.paths.prod
+        label_T = int(round(T))
+        # e.g. A_0.05 -> A_0p05
+        label_A = f"A_{cos_acceleration:.4f}".replace(".", "p")
+        # Example subdirectory: prod/pp_300K/A_0p0500
+        pp_dir = prod_root / f"pp_{label_T}K" / label_A
+        pp_dir.mkdir(parents=True, exist_ok=True)
+
+        env = self._gmx_env()
+        gmx = self._gmx_executable()
+
+        if start_gro is None:
+            start_src = self.paths.npt / "npt.gro"
+        else:
+            start_src = Path(start_gro)
+
+        if top is None:
+            top_src = self.paths.build / "system.top"
+        else:
+            top_src = Path(top)
+
+        if not start_src.exists():
+            raise FileNotFoundError(f"Starting configuration not found: {start_src}")
+        if not top_src.exists():
+            raise FileNotFoundError(f"Topology not found: {top_src}")
+
+        start = pp_dir / start_src.name
+        if start.resolve() != start_src.resolve():
+            shutil.copy2(start_src, start)
+        else:
+            start = start_src
+
+        top = pp_dir / top_src.name
+        if top.resolve() != top_src.resolve():
+            shutil.copy2(top_src, top)
+        else:
+            top = top_src
+
+        for itp_src in self.paths.build.glob("*.itp"):
+            dst = pp_dir / itp_src.name
+            if not dst.exists():
+                shutil.copy2(itp_src, dst)
+
+        # Create the .mdp file
+        mdp = pp_dir / "pp_viscosity.mdp"
+        self._write_viscosity_pp_mdp(
+            mdp, T=T, ns=ns, cos_acceleration=cos_acceleration, dt=dt
+        )
+        tpr_name = "pp"
+        tpr = pp_dir / f"{tpr_name}.tpr"
+        grompp_cmd = [
+            gmx,
+            "grompp",
+            "-f",
+            mdp.name,
+            "-c",
+            start.name,
+            "-p",
+            top.name,
+            "-o",
+            tpr.name,
+            "-maxwarn",
+            str(maxwarn),
+        ]
+        result = subprocess.run(
+            grompp_cmd,
+            cwd=str(pp_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        print("grompp (PP viscosity) stdout:\n", result.stdout)
+        print("grompp (PP viscosity) stderr:\n", result.stderr)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"grompp (PP viscosity) failed with exit code {result.returncode}"
+            )
+
+        self._run_mdrun(
+            workdir=pp_dir,
+            deffnm=tpr_name,
+            slurm=slurm,
+            job_name=f"pp_{label_T}K",
+            log_name="pp.log",
+        )
+
+        return pp_dir / f"{tpr_name}.edr"
 
     # MDP file writers
 
@@ -1146,34 +1307,42 @@ class GromacsSimulator:
             f"{extras}"
         )
 
-    def _write_nemd_shear_mdp(
-        self, path: Path, T: float, ns: float, shear_rate_ps: float
+    def _write_viscosity_pp_mdp(
+        self,
+        path: Path,
+        T: float,
+        ns: float,
+        cos_acceleration: float,
+        dt: float = 0.002,
     ) -> None:
-        """
-        Example NEMD via periodic box deformation (simple Couette-like shear).
-        You *must* validate physics for your system; this is a scaffold.
-        """
-        dt = 0.002
         nsteps = int((ns * 1e6) / (dt * 1e3))
-        # GROMACS 'deform' deforms the box every step (units: 1/ps). Example shears xy.
-        # Turn off pressure coupling or use anisotropic schemes carefully during shear.
         path.write_text(
-            f"; NEMD shear deformation (scaffold)\n"
-            f"integrator     = md\n"
-            f"dt             = {dt}\n"
-            f"nsteps         = {nsteps}\n"
-            f"tcoupl         = v-rescale\n"
-            f"tc-grps        = System\n"
-            f"tau_t          = 1.0\n"
-            f"ref_t          = {T}\n"
-            f"pcoupl         = no\n"
-            f"constraints    = h-bonds\n"
-            f"cutoff-scheme  = Verlet\n"
-            f"coulombtype    = PME\n"
-            f"rcoulomb       = 1.2\n"
-            f"rvdw           = 1.2\n"
-            f"; Box deformation: shear in xy; set others to 0.0\n"
-            f"deform         = {shear_rate_ps} 0.0 0.0  0.0 0.0 0.0\n"
-            f"nstxout-compressed = 2000\n"
-            f"nstenergy      = 500\n"
+            f"integrator  = md\n"
+            f"dt          = {dt}\n"
+            f"nsteps      = {nsteps}\n"
+            f"tcoupl      = v-rescale\n"
+            f"tc-grps     = System\n"
+            f"tau_t       = 1.0\n"
+            f"ref_t       = {T}\n"
+            f"pcoupl      = no\n"
+            f"comm-mode   = None\n"
+            f"comm-grps   = System\n"
+            f"constraints = h-bonds\n"
+            f"constraint-algorithm = lincs\n"
+            f"lincs-order = 4\n"
+            f"cutoff-scheme = Verlet\n"
+            f"coulombtype   = PME\n"
+            f"rcoulomb      = 1.3\n"
+            f"rvdw          = 1.2\n"
+            f"DispCorr      = EnerPres\n"
+            f"nstlist       = 20\n"
+            f"verlet-buffer-tolerance = 0.005\n"
+            f"nstxout                = 0\n"
+            f"nstvout                = 0\n"
+            f"nstxout-compressed     = 2000\n"
+            f"nstenergy              = 1000\n"
+            f"nstlog                 = 1000\n"
+            f"nstcalcenergy          = 10\n"
+            f"energygrps             = System\n"
+            f"cos-acceleration = {cos_acceleration}\n"
         )

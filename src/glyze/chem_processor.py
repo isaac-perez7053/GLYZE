@@ -9,13 +9,28 @@ from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from ordered_set import OrderedSet
 
-
+# TODO: Implement custom k-list and list reactions
 AVOGADRO = 6.02214076e23
 CM3_PER_A3 = 1e-24
 
 
 @dataclass
 class PKineticSim:
+    """
+    Simulator of fat formulation chemical kinetics via mass-action ODEs.
+
+    Attributes
+    ----------
+    species_names : list
+        List of species names.
+    react_stoic : np.ndarray
+        Reactant stoichiometry matrix R (ns, nr).
+    prod_stoic : np.ndarray
+        Product stoichiometry matrix P (ns, nr).
+    init_state : np.ndarray
+        Initial state vector (ns,).
+    """
+
     species_names: list
     react_stoic: np.ndarray  # R (ns, nr)
     prod_stoic: np.ndarray  # P (ns, nr)
@@ -193,8 +208,6 @@ class PKineticSim:
 class ChemReactSim:
     """
     Core library for simulating the chemical processing of lipids
-
-    tag_composition: GlycerideMix
     """
 
     @staticmethod
@@ -560,12 +573,12 @@ class ChemReactSim:
             tag = list_of_stuff[i]
             fa0, fa1, fa2 = tag.sn
             if plucked[i] == "end":
-                dag0 = tag.remove_fatty_acid(index=0, fatty_acid=fa0)  # G_None_FA_FA
-                dag2 = tag.remove_fatty_acid(index=2, fatty_acid=fa2)  # G_FA_FA_None
+                dag0, _ = tag.remove_fatty_acid(index=0)  # G_None_FA_FA
+                dag2, _ = tag.remove_fatty_acid(index=2)  # G_FA_FA_None
                 unique_dags.add(dag0)
                 unique_dags.add(dag2)
                 dag_lookup[(tag.name, 0)] = (fa0.name, dag0)
-                dag_lookup[(tag.name, 2)] = (fa2.name, dag1)
+                dag_lookup[(tag.name, 2)] = (fa2.name, dag2)
                 # if the arrangement goes to the end or the middle (sorting)
                 if arranged[i] == "end":
                     end.append(fa0)
@@ -574,7 +587,7 @@ class ChemReactSim:
                     mid.append(fa0)
                     mid.append(fa2)
             else:  # its mid
-                dag1 = tag.remove_fatty_acid(index=1, fatty_acid=fa1)  # G_FA_None_FA
+                dag1, _ = tag.remove_fatty_acid(index=1)  # G_FA_None_FA
                 unique_dags.add(dag1)
                 dag_lookup[(tag.name, 1)] = (fa1.name, dag1)
                 if arranged[i] == "end":
@@ -587,55 +600,46 @@ class ChemReactSim:
             {}
         )  # (dag.name, fa.name) -> TG
 
-        # if dag.sn[1] is None:
-        #     tg1 = dag.add_fatty_acid(index=1, fatty_acid=fa)
-        # elif dag.sn[2] is None:
-        #     tg1 = dag.add_fatty_acid(index=2, fatty_acid=fa)
-        # else:
-        #     raise ValueError("Unexpected diglyceride structure")
-        # unique_tgs.add(tg1)
-        # tg_lookup[(dag.name, fa.name)] = tg1
-
         for dag in unique_dags:
-            for fa in mid:
-                # if the middle is empty
-                if dag.sn[1] is None:
+            if dag.sn[1] is None:
+                for fa in mid:
+                    # if the middle is empty
                     tg1 = dag.add_fatty_acid(index=1, fatty_acid=fa)
                     unique_tgs.add(tg1)
                     tg_lookup[(dag.name, fa.name)] = tg1
-                else:
-                    # or its not and so the ends must be empty
-                    for fa in end:
-                        if dag.sn[0] is None:
-                            tg1 = dag.add_fatty_acid(index=0, fatty_acid=fa)
-                            unique_tgs.add(tg1)
-                            tg_lookup[(dag.name, fa.name)] = tg1
-                        elif dag.sn[2] is None:
-                            tg1 = dag.add_fatty_acid(index=2, fatty_acid=fa)
-                            unique_tgs.add(tg1)
-                            tg_lookup[(dag.name, fa.name)] = tg1
-                        else:
-                            raise ValueError("Unexpected diglyceride structure")
+            else:
+                # or its not and so the ends must be empty
+                for fa in end:
+                    if dag.sn[0] is None:
+                        tg1 = dag.add_fatty_acid(index=0, fatty_acid=fa)
+                        unique_tgs.add(tg1)
+                        tg_lookup[(dag.name, fa.name)] = tg1
+                    elif dag.sn[2] is None:
+                        tg1 = dag.add_fatty_acid(index=2, fatty_acid=fa)
+                        unique_tgs.add(tg1)
+                        tg_lookup[(dag.name, fa.name)] = tg1
+                    else:
+                        raise ValueError("Unexpected diglyceride structure")
+
+        for i in range(len(list_of_stuff)):
+            if plucked[i] == arranged[i]:
+                dag, fa = tag.remove_fatty_acid(index=1)
+                tg_lookup[(dag.name, fa.name)] = list_of_stuff[i]
+            else:
+                dag0, fa0 = tag.remove_fatty_acid(index=0)
+                dag2, fa2 = tag.remove_fatty_acid(index=2)
+                tg_lookup[(dag0.name, fa0.name)] = list_of_stuff[i]
+                tg_lookup[(dag2.name, fa2.name)] = list_of_stuff[i]
 
         unique_species = list(OrderedSet.union(unique_dags, unique_tgs))
-        midend = mid + end  # Combine the two lists together
+        midend = OrderedSet(mid + end)  # Combine the two lists together
         init_tags = [init_tags.name for init_tags in list_of_stuff]
         fa_names = [fa.name for fa in midend]
         gly_names = [specie.name for specie in unique_species]
         species_names = [*fa_names, *OrderedSet(gly_names + init_tags)]
         species_idx = {nm: i for i, nm in enumerate(species_names)}
+
         ns = len(species_names)
-        # print(*[f"Printing species [{i}] -> \n{x}" for i, x in enumerate(unique_species)], sep='\n')
-        # print("Printing midend array:\n")
-        # print(*[f"Printing midend[{i}] -> \n {x}" for i, x in enumerate(midend)], sep='\n')
-        # print(*[f"Printing initial tag [{i}] -> \n {x}" for i, x in enumerate(init_tags)], sep='\n')
-        # print("Printing fatty acid names: \n")
-        # print(fa_names)
-        # print("\nPrinting gly_names: \n")
-        # print(gly_names)
-        # print("\nPrinting species names: \n")
-        # print(*[f"\nPrinting unique specices [{i}] -> \n {x}" for i, x in enumerate(species_names)], sep='\n')
-        # print(ns)
 
         # build reaction names
         for i, tag in enumerate(list_of_stuff):
@@ -729,41 +733,10 @@ class ChemReactSim:
         )
 
         ks = np.asarray(ks, dtype=float)
-
-        # # sanity checks
-        # ns = len(species_names)
-        # nr = len(rxn_names)
-        # assert react_stoic.shape == (
-        #     ns,
-        #     nr,
-        # ), f"react_stoic shape {react_stoic.shape} != (ns, nr)=({ns}, {nr})"
-        # assert prod_stoic.shape == (
-        #     ns,
-        #     nr,
-        # ), f"prod_stoic shape {prod_stoic.shape} != (ns, nr)=({ns}, {nr})"
-        # assert ks.shape == (nr,), f"k_det shape {ks.shape} != (nr,)={nr}"
-        # assert init_state.shape == (
-        #     ns,
-        # ), f"init_state shape {init_state.shape} != (ns,)={ns}"
-
-        # print("Species index mapping:")
-        # for i, nm in enumerate(species_names):
-        #     print(f"  [{i:2d}] {nm}")
-        # print()
-        # print("First few reactions and stoichiometry rows:")
-        # for i in range(min(5, len(rxn_names))):
-        #     print(f"{i:3d}: {rxn_names[i]}")
-        #     print("    Reactants:", np.where(react_stoic.T[i] != 0)[0])
-        #     print("    Products: ", np.where(prod_stoic.T[i] != 0)[0])
-        # print()
-        # np.set_printoptions(linewidth=np.inf)
-        # print(f"Printing species names: {species_names}")
-        # print(
-        #     f"Printing reaction stoichiometry:\nReactants:\n{np.array2string(react_stoic.T)}\nProducts:\n{np.array2string(prod_stoic.T)}"
-        # )
-        # print(f"Printing Initial state: {init_state}")
-        # print(f"Printing rate constants: {ks}")
-        # print(f"Printing shape of reactant stoichiometry: {react_stoic.shape}")
+        print("Species index mapping:")
+        for i, nm in enumerate(species_names):
+            print(f"  [{i:2d}] {nm}")
+        print()
 
         return PKineticSim(
             species_names=species_names,
@@ -774,6 +747,21 @@ class ChemReactSim:
             rxn_names=rxn_names,
             chem_flag=chem_flag,
         )
+
+    def deoderization(mix: GlycerideMix, T: float, P: float) -> GlycerideMix:
+        """
+        Perform deoderization on a glyceride mix at a given temperature and pressure.
+
+        Parameters:
+        -----------
+            mix (GlycerideMix): The glyceride mix to be deoderized.
+            T (float): Temperature in Kelvin.
+            P (float): Pressure in atm.
+
+        Returns:
+        -----------
+            GlycerideMix: The deoderized glyceride mix.
+        """
 
     @staticmethod
     def random_intersterification(g_composition: GlycerideMix):

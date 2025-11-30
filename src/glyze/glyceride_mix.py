@@ -431,7 +431,7 @@ class GlycerideMix:
             Output PDB filename.
         tolerance : float
             Minimum distance tolerance for Packmol.
-        
+
         Returns
         -------
         str
@@ -496,6 +496,54 @@ class GlycerideMix:
         parts = [f"{glyceride.name}-{qty:.3g}" for glyceride, qty in self.mix.items()]
         return "MIX_" + "_".join(parts)
 
+    @property
+    def list_masses(self) -> List[float]:
+        """
+        List of species masses using units
+        """
+        masses = []
+        if self.units == "mole":
+            masses = [
+                92.08 if g == "Glycerol" else g.molar_mass * qty
+                for g, qty in self.mix.items()
+            ]
+
+        if self.units == "gram":
+            masses = [qty for g, qty in self.mix.items()]
+
+        if self.units == "mass_fraction":
+            masses = [qty * self.total_mass for g, qty in self.mix.items()]
+
+        return masses
+
+    @property
+    def total_mass(self) -> float:
+        """
+        Calculate total species mass using units
+        """
+
+        if self.units == "mole":
+            total = sum(
+                92.08 if g == "Glycerol" else g.molar_mass * qty
+                for g, qty in self.mix.items()
+            )
+
+        if self.units == "gram":
+            total = sum(qty for _, qty in self.mix.items())
+
+        if self.units == "mass_fraction":
+            total = 1.0
+
+        return total
+
     def __repr__(self):
         parts = [f"{glyceride.name}: {qty}" for glyceride, qty in self.mix.items()]
         return "Glyceride_Composition({" + ", ".join(parts) + "})"
+
+    def __str__(self):
+        import tabulate
+
+        table = [[glyceride, qty] for glyceride, qty in self.mix.items()]
+        return tabulate.tabulate(
+            table, headers=["Glyceride", f"Quantity ({self.units})"]
+        )

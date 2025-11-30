@@ -20,7 +20,7 @@ class PackmolSimulator:
     ----------
     packmol_path
         Path to the Packmol executable. Can be relative and/or use '~'.
-        If None, 'packmol' from the environment PATH will be used.  
+        If None, 'packmol' from the environment PATH will be used.
     """
 
     def __init__(self, packmol_path: Optional[Union[str, Path]] = None):

@@ -78,14 +78,9 @@ PERIODIC_MASS = {
 class OPLSAtomTyper:
     """
     Rule-based SMARTS typing tailored for glycerides (tri-, di-, monoacylglycerols).
-    This is a *starter scaffold*: replace the 'type' and 'charge' with authoritative values.
 
     Rules are evaluated in order. First match wins.
     Each rule tuple: (SMARTS, type_name, default_charge, name_hint)
-
-    YOU SHOULD:
-      - Replace 'type_name' (e.g., 'opls_EST_C') with real OPLS-AA types (e.g., 'opls_235') if applicable.
-      - Replace charges with literature/forcefield values for your target subclass (TAG, DAG, MAG).
     """
 
     def __init__(self) -> None:
@@ -482,7 +477,6 @@ def execute_multiwfn_cm5(
     # If no script is given, auto-generate one; otherwise, use what the caller provided
     if input_file is None:
         script = Path("cm5.txt")
-        # TODO: adjust these numbers to the menu sequence that works for your Multiwfn build
         script.write_text("7\n16\n1\ny\nq\n")
         input_file = str(script)
 
@@ -790,7 +784,7 @@ def write_itp(
 ):
     # atom names: element plus index
     atom_records: List[AtomRecord] = []
-    cfg = _load_opls_cfg() 
+    cfg = _load_opls_cfg()
 
     for i, atom in enumerate(mol.GetAtoms()):
         sym = atom.GetSymbol()

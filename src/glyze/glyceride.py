@@ -7,6 +7,78 @@ import copy
 from pathlib import Path
 
 
+def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
+    """Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields."""
+
+    # Helper: one embed attempt with ETKDG v2 and a toggle for random coords
+    def _try_embed(use_random: bool) -> int:
+        return AllChem.EmbedMolecule(
+            mol,
+            maxAttempts=8000,
+            randomSeed=0xBEEF,
+            useRandomCoords=use_random,
+            boxSizeMult=2.0,
+            randNegEig=True,
+            numZeroFail=1,
+            forceTol=0.001,
+            ignoreSmoothingFailures=False,
+            enforceChirality=True,
+            useExpTorsionAnglePrefs=True,
+            useBasicKnowledge=True,
+            useSmallRingTorsions=False,
+            useMacrocycleTorsions=True,
+            ETversion=2,
+        )
+
+    # Single-conformer attempts: deterministic -> random
+    confId = _try_embed(use_random=False)
+    if confId == -1:
+        confId = _try_embed(use_random=True)
+
+    if confId == -1:
+        conf_ids = list(
+            AllChem.EmbedMultipleConfs(
+                mol,
+                numConfs=24,
+                maxAttempts=8000,
+                randomSeed=0xBEEF,
+                useRandomCoords=True,
+                boxSizeMult=2.0,
+                randNegEig=True,
+                numZeroFail=1,
+                forceTol=0.001,
+                ignoreSmoothingFailures=False,
+                enforceChirality=True,
+                useExpTorsionAnglePrefs=True,
+                useBasicKnowledge=True,
+                useSmallRingTorsions=False,
+                useMacrocycleTorsions=True,
+                ETversion=2,
+            )
+        )
+        if not conf_ids:
+            raise RuntimeError("Conformer embedding failed (no conformers generated).")
+
+        # Optimize all with UFF and select best
+        res = AllChem.UFFOptimizeMoleculeConfs(mol, confIds=conf_ids, maxIters=1000)
+        energies = [r[1] for r in res]
+        best_idx = min(range(len(conf_ids)), key=lambda i: energies[i])
+        confId = conf_ids[best_idx]
+
+    #  Force-field relaxation of the chosen conformer
+    if AllChem.MMFFHasAllMoleculeParams(mol):
+        try:
+            AllChem.MMFFOptimizeMolecule(mol, confId=confId, maxIters=2000)
+        except Exception:
+            AllChem.UFFOptimizeMolecule(mol, confId=confId, maxIters=2000)
+    else:
+        AllChem.UFFOptimizeMolecule(mol, confId=confId, maxIters=2000)
+
+    # Assign stereochemistry after coords exist
+    Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+    return mol
+
+
 def _fa_key(fa: Optional[FattyAcid]) -> tuple:
     """
     Return a fully comparable, canonical sorting key for a FattyAcid (or None).
@@ -102,6 +174,80 @@ class FattyAcid:
             stereo = tuple()
         branches = tuple(sorted((int(p), str(lbl)) for p, lbl in self.branches))
         return FattyAcid(self.length, positions, stereo, branches)
+
+    def to_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
+        """
+        Convert the fatty acid to an RDKit molecule.
+
+        Returns:
+            Chem.Mol: The RDKit molecule representing the fatty acid.
+        """
+        rw = Chem.RWMol()
+        # Build the rest of the chain (C1...Cn)
+        chain_idx = []
+        last = None
+        for i in range(1, self.length + 1):
+            ci = rw.AddAtom(Chem.Atom(6))
+            chain_idx.append = ci
+            if last is not None:
+                rw.AddBond(last, ci, Chem.BondType.SINGLE)
+            last = ci
+        # Branhces
+        for pos, lbl in self.branches:
+            # Ensure pos maps to chain_idx[pos -1]
+            if lbl.lower() in ("me", "methyl"):
+                if 1 <= pos <= self.length:
+                    c = rw.AddAtom(Chem.Atom(6))
+                    rw.AddBond(chain_idx[pos - 1], c, Chem.BondType.SINGLE)
+            else:
+                raise NotImplementedError(
+                    f"Branch label '{lbl}' not implemented yet (only 'Me')."
+                )
+        # Double bonds along chain
+        # Map positions k to indices
+        for k, st in zip(self.db_positions, self.db_stereo):
+            a = chain_idx[k - 1]
+            b = chain_idx[k]
+            bond = rw.GetBondBetweenAtoms(a, b)
+            if bond is None:
+                raise RuntimeError("Internal: expected a bond to set C=C.")
+            bond.SetBondType(Chem.BondType.DOUBLE)
+            # Assign E/Z stereo if possible
+            # Pick on neighbor on each side that is not the other double-bond atom
+            a_neighbors = [
+                nbr.getIdx()
+                for nbr in rw.GetAtomWithIdx(a).GetNeighbors()
+                if nbr.GetIdx() != b
+            ]
+            b_neighbors = [nbr.getIdx() for nbr in rw.GetAtomWithIdx(b)]
+            if a_neighbors and b_neighbors:
+                bond.SetStereoAtoms(a_neighbors[0], b_neighbors[0])
+                norm = st.strip().lower()
+                if norm in ("z", "ciz"):
+                    bond.SetStereo(Chem.BondStereo.STEREOZ)
+                elif norm in ("e",):
+                    bond.SetStereo(Chem.BondStereo.STEREOE)
+                else:
+                    pass
+
+        mol = rw.GetMol()
+        Chem.SanitizeMol(mol)
+        mol = Chem.AddHs(mol)
+
+        if optimize:
+            mol = _optimize_mol(mol, confId=-1)
+        return mol
+
+    @property
+    def molar_mass(self) -> float:
+        """Calculate the molar mass of the fatty acid in g/mol"""
+        # Build RDkit molecule and sum atomic masses
+        mol = self.to_rdkit_mol()
+        mass = 0
+        for atom in mol.getAtoms():
+            mass += atom.GetMass()
+
+        return mass
 
     @property
     def name(self) -> str:
@@ -285,6 +431,26 @@ class Glyceride:
             self.sn = tuple(new_sn)
             return self
 
+    def remove_fatty_acid(self, index: int):
+        """
+        remove a fatty acid to the glyceride and return a removed fatty acid of the new glyceride.
+
+        Paramters:
+            index (int): Index (0, 1, or 2) to add the fatty acid to.
+
+        Returns:
+            Glyceride: A new Glyceride instance with the fatty acid removed.
+        """
+        if index not in (0, 1, 2):
+            raise ValueError("Index must be 0, 1, or 2.")
+        if self.sn[index] is None:
+            raise ValueError(f"Position sn-{index} is already empty.")
+
+        new_sn = list(self.sn)
+        fa = new_sn[index]
+        new_sn[index] = None
+        return self.__class__(tuple(new_sn)), fa
+
     def swap_fatty_acids(self, index1: int, index2: int, deep_copy: bool = True):
         """
         Swap two fatty acids in the glyceride and return a deepcopy of the new glyceride.
@@ -362,76 +528,8 @@ class Glyceride:
         mol = Chem.AddHs(mol)
 
         if optimize:
-            # Helper: one embed attempt with ETKDG v2 and a toggle for random coords
-            def _try_embed(use_random: bool) -> int:
-                return AllChem.EmbedMolecule(
-                    mol,
-                    maxAttempts=8000,
-                    randomSeed=0xBEEF,
-                    useRandomCoords=use_random,
-                    boxSizeMult=2.0,
-                    randNegEig=True,
-                    numZeroFail=1,
-                    forceTol=0.001,
-                    ignoreSmoothingFailures=False,
-                    enforceChirality=True,
-                    useExpTorsionAnglePrefs=True,
-                    useBasicKnowledge=True,
-                    useSmallRingTorsions=False,
-                    useMacrocycleTorsions=True,
-                    ETversion=2,
-                )
+            mol = _optimize_mol(mol, confId=-1)
 
-            # Single-conformer attempts: deterministic -> random
-            confId = _try_embed(use_random=False)
-            if confId == -1:
-                confId = _try_embed(use_random=True)
-
-            if confId == -1:
-                conf_ids = list(
-                    AllChem.EmbedMultipleConfs(
-                        mol,
-                        numConfs=24,
-                        maxAttempts=8000,
-                        randomSeed=0xBEEF,
-                        useRandomCoords=True,
-                        boxSizeMult=2.0,
-                        randNegEig=True,
-                        numZeroFail=1,
-                        forceTol=0.001,
-                        ignoreSmoothingFailures=False,
-                        enforceChirality=True,
-                        useExpTorsionAnglePrefs=True,
-                        useBasicKnowledge=True,
-                        useSmallRingTorsions=False,
-                        useMacrocycleTorsions=True,
-                        ETversion=2,
-                    )
-                )
-                if not conf_ids:
-                    raise RuntimeError(
-                        "Conformer embedding failed (no conformers generated)."
-                    )
-
-                # Optimize all with UFF and select best
-                res = AllChem.UFFOptimizeMoleculeConfs(
-                    mol, confIds=conf_ids, maxIters=1000
-                )
-                energies = [r[1] for r in res]
-                best_idx = min(range(len(conf_ids)), key=lambda i: energies[i])
-                confId = conf_ids[best_idx]
-
-            #  Force-field relaxation of the chosen conformer
-            if AllChem.MMFFHasAllMoleculeParams(mol):
-                try:
-                    AllChem.MMFFOptimizeMolecule(mol, confId=confId, maxIters=2000)
-                except Exception:
-                    AllChem.UFFOptimizeMolecule(mol, confId=confId, maxIters=2000)
-            else:
-                AllChem.UFFOptimizeMolecule(mol, confId=confId, maxIters=2000)
-
-            # Assign stereochemistry after coords exist
-            Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
         return mol
 
     def rdkit_mol_to_gaussian_gjf(
@@ -463,13 +561,10 @@ class Glyceride:
             )
 
         conf = mol.GetConformer()
-
-        # Use the jobname for the checkpoint file name
         chk_name = f"{jobname}.chk"
 
         lines: list[str] = []
 
-        # Header section – match your working script
         # Example:
         # %chk=molecule.chk
         # %mem=32GB
@@ -478,16 +573,15 @@ class Glyceride:
         lines.append(f"%mem={mem}")
         lines.append(f"%NProcShared={nproc}")
 
-        # Route section – match your working example:
-        # #P B3LYP/6-31 Opt
-        # (you can parameterize this later if needed)
-        lines.append("#P B3LYP/6-31 Opt")
+        # As specified in the paper:
+        lines.append(
+            "#P B3LYP/6-311G(d,p) EmpiricalDispersion=GD3BJ Opt SCF=Tight Int=UltraFine"
+        )
 
         # Blank line
         lines.append("")
 
-        # Title line – use the jobname the user passed in
-        # e.g. "Triolein geometry optimization — B3LYP-D3(BJ)/6-311G(d,p)"
+        # Title line
         lines.append(jobname)
 
         # Blank line before charge/multiplicity
@@ -504,7 +598,7 @@ class Glyceride:
             )
 
         # Final blank line
-        lines.append("")
+        lines.append("\n")
 
         # Write to disk
         with open(gjf_path, "w") as f:
