@@ -3,8 +3,6 @@ from __future__ import annotations
 import streamlit as st
 import plotly.graph_objects as go
 from typing import List
-
-# GLYZE imports – adjust if your package layout is different
 from glyze import FattyAcid, Glyceride, GlycerideMix, ChemReactSim
 from rdkit.Chem import Mol
 
