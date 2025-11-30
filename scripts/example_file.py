@@ -107,8 +107,6 @@ def main():
     model.prepare_initial_configuration(num_molecules=20, density_g_per_cm3=0.5)
     model.build_gromacs_system(num_molecules=20)
     model.run_energy_minimization()
-
-    # Adjust the order if your pipeline does NVT then NPT instead.
     model.run_npt_equilibration(T=300.0, P=1.0, ns=2.0, slurm=slurm)
     model.run_nvt_equilibration(T=300.0, ns=2.0, slurm=slurm)
 
