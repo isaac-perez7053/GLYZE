@@ -22,7 +22,4 @@ src/glyze.egg-info/dependency_links.txt
 src/glyze.egg-info/entry_points.txt
 src/glyze.egg-info/requires.txt
 src/glyze.egg-info/top_level.txt
-tests/test_glyceride_opls_pipeline.py
-tests/test_gmxapi.py
-tests/test_gmxapi_wrapper.py
-tests/test_multiwfn_cm5.py
+src/glyze/ui/ui.py
