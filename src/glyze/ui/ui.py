@@ -646,7 +646,7 @@ def main():
         return n / n.sum()
 
     st.set_page_config(page_title="Viscosity Mixer")
-    st.title("Viscosity vs Temperature — Mixture Widget")
+    st.title("Viscosity vs Temperature - Mixture Widget")
 
     with st.expander("Valid temperature ranges by tag", expanded=False):
         st.write(
