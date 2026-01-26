@@ -118,7 +118,7 @@ class PKineticSim:
             plt.plot(sol.t, sol.y[i, :], label=self.species_names[i])
         plt.xlabel("Time")
         plt.ylabel("Concentration")
-        plt.legend(loc="best", ncols=2)
+        # plt.legend(loc="best", ncols=2)
         plt.tight_layout()
         plt.show()
 
@@ -732,11 +732,11 @@ class ChemReactSim:
             np.hstack(prod_stoic) if len(prod_stoic) else np.zeros((ns, 0), dtype=float)
         )
 
-        ks = np.asarray(ks, dtype=float)
-        print("Species index mapping:")
-        for i, nm in enumerate(species_names):
-            print(f"  [{i:2d}] {nm}")
-        print()
+        # ks = np.asarray(ks, dtype=float)
+        # print("Species index mapping:")
+        # for i, nm in enumerate(species_names):
+        #     print(f"  [{i:2d}] {nm}")
+        # print()
 
         return PKineticSim(
             species_names=species_names,
