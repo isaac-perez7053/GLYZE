@@ -100,27 +100,27 @@ class PKineticSim:
         )
         return sol
 
-    # def plot(self, sol, show_species: list[str] | None = None, figsize=(10, 6)):
-    #     """
-    #     Plot specified species (or all if None)
-    #     """
-    #     if not sol.success:
-    #         raise RuntimeError(f"Integration failed: {sol.message}")
+    def plot(self, sol, show_species: list[str] | None = None, figsize=(10, 6)):
+        """
+        Plot specified species (or all if None)
+        """
+        if not sol.success:
+            raise RuntimeError(f"Integration failed: {sol.message}")
 
-    #     idxs = (
-    #         range(len(self.species_names))
-    #         if show_species is None
-    #         else [self.species_names.index(nm) for nm in show_species]
-    #     )
+        idxs = (
+            range(len(self.species_names))
+            if show_species is None
+            else [self.species_names.index(nm) for nm in show_species]
+        )
 
-    #     plt.figure(figsize=figsize)
-    #     for i in idxs:
-    #         plt.plot(sol.t, sol.y[i, :], label=self.species_names[i])
-    #     plt.xlabel("Time")
-    #     plt.ylabel("Concentration")
-    #     # plt.legend(loc="best", ncols=2)
-    #     plt.tight_layout()
-    #     plt.show()
+        plt.figure(figsize=figsize)
+        for i in idxs:
+            plt.plot(sol.t, sol.y[i, :], label=self.species_names[i])
+        plt.xlabel("Time")
+        plt.ylabel("Concentration")
+        # plt.legend(loc="best", ncols=2)
+        plt.tight_layout()
+        plt.show()
 
     def _top_species_indices(self, sol, n: int = 12):
         """Pick top-N species by max concentration over time (to declutter)."""
@@ -515,6 +515,8 @@ class ChemReactSim:
         # print(f"Printing Initial state: {init_state}")
         # print(f"Printing rate constants: {ks}")
         # print(f"Printing shape of reactant stoichiometry: {react_stoic.shape}")
+        print(" NEW p_kinetic_esterification LOADED ")
+
 
         return PKineticSim(
             species_names=species_names,
