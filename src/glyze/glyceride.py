@@ -188,7 +188,7 @@ class FattyAcid:
         last = None
         for i in range(1, self.length + 1):
             ci = rw.AddAtom(Chem.Atom(6))
-            chain_idx.append = ci
+            chain_idx.append
             if last is not None:
                 rw.AddBond(last, ci, Chem.BondType.SINGLE)
             last = ci
@@ -244,7 +244,7 @@ class FattyAcid:
         # Build RDkit molecule and sum atomic masses
         mol = self.to_rdkit_mol()
         mass = 0
-        for atom in mol.getAtoms():
+        for atom in mol.GetAtoms():
             mass += atom.GetMass()
 
         return mass

@@ -515,7 +515,6 @@ class ChemReactSim:
         # print(f"Printing Initial state: {init_state}")
         # print(f"Printing rate constants: {ks}")
         # print(f"Printing shape of reactant stoichiometry: {react_stoic.shape}")
-        print(" NEW p_kinetic_esterification LOADED ")
 
 
         return PKineticSim(
