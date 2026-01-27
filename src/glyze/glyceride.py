@@ -525,7 +525,7 @@ class Glyceride:
         Returns:
             Chem.Mol: The RDKit molecule with 3D coordinates.
         """
-        rw, sn_os, _ = self._build_glycerol_backbone()
+        rw, sn_os, _ = self._build_glycerol_backbone()  # the chem mol func and the indices of the backbone
         for idx, fa in enumerate(self.sn):
             if fa is None:
                 continue
@@ -619,6 +619,7 @@ class Glyceride:
         c = rw.AddAtom(Chem.Atom(6))
         rw.AddBond(carbon_idx, c, Chem.BondType.SINGLE)
 
+    # how come there is a missing oxygen here?
     def _build_acyl_chain(self, fa: FattyAcid, rw: Chem.RWMol) -> Tuple[int, List[int]]:
         """
         Build an acyl group for the fatty acid into rw:
@@ -692,6 +693,7 @@ class Glyceride:
 
         return c1, chain_idx
 
+    # where are the hydrogens?
     def _build_glycerol_backbone(
         self,
     ) -> Tuple[Chem.RWMol, Tuple[int, int, int], List[int]]:
