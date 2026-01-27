@@ -376,7 +376,6 @@ class ChemReactSim:
         ns = len(species_names)
 
         # Generate monoglycerides and rxn_names (reuse prebuilt MAGs)
-        # TODO: add gly + fa --> mag/dag/tag + 3 h2o
         for fa in list_of_fa:
             mg_end = mag_lookup[("end", fa.name)].name
             mg_mid = mag_lookup[("mid", fa.name)].name
@@ -417,7 +416,7 @@ class ChemReactSim:
                         ks,
                         species_idx,
                         reactants=[mag.name, fa.name],
-                        products=[dg1],
+                        products=[dg1, h2o],
                         k=1.0,
                         name=f"{mag.name} + {fa.name} => {dg1} + h2o",
                     )
