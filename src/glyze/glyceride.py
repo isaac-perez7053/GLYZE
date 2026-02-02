@@ -176,6 +176,7 @@ class FattyAcid:
         branches = tuple(sorted((int(p), str(lbl)) for p, lbl in self.branches))
         return FattyAcid(self.length, positions, stereo, branches)
 
+    # currently it builds a hydrocarbon chain which means self.length = 10 --> C = 10 and H = 22
     def to_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
         """
         Convert the fatty acid to an RDKit molecule.
@@ -184,12 +185,25 @@ class FattyAcid:
             Chem.Mol: The RDKit molecule representing the fatty acid.
         """
         rw = Chem.RWMol()
+
+        # add the carboxyl group
+        carboxyl = rw.AddAtom(Chem.Atom(6)) #the atoms
+        o_double = rw.AddAtom(Chem.Atom(8))
+        o_single = rw.AddAtom(Chem.Atom(8))
+
+        rw.AddBond(carboxyl, o_double, Chem.BondType.DOUBLE)
+        rw.AddBond(carboxyl, o_single, Chem.BondType.SINGLE)
+
         # Build the rest of the chain (C1...Cn)
         chain_idx = []
-        last = None
-        for i in range(1, self.length + 1):
+        last = carboxyl #adds to the chain
+        for i in range(2, self.length + 1):
             ci = rw.AddAtom(Chem.Atom(6))
+<<<<<<< HEAD
             chain_idx.append(ci)
+=======
+            chain_idx.append(ci) #bug?
+>>>>>>> 43af217eed951993563a6097cd57b33d217dbc7e
             if last is not None:
                 rw.AddBond(last, ci, Chem.BondType.SINGLE)
             last = ci
@@ -199,7 +213,7 @@ class FattyAcid:
             if lbl.lower() in ("me", "methyl"):
                 if 1 <= pos <= self.length:
                     c = rw.AddAtom(Chem.Atom(6))
-                    rw.AddBond(chain_idx[pos - 1], c, Chem.BondType.SINGLE)
+                    rw.AddBond(chain_idx[pos - 2], c, Chem.BondType.SINGLE)
             else:
                 raise NotImplementedError(
                     f"Branch label '{lbl}' not implemented yet (only 'Me')."
@@ -207,8 +221,8 @@ class FattyAcid:
         # Double bonds along chain
         # Map positions k to indices
         for k, st in zip(self.db_positions, self.db_stereo):
-            a = chain_idx[k - 1]
-            b = chain_idx[k]
+            a = chain_idx[k - 2]
+            b = chain_idx[k - 1]
             bond = rw.GetBondBetweenAtoms(a, b)
             if bond is None:
                 raise RuntimeError("Internal: expected a bond to set C=C.")
@@ -516,7 +530,7 @@ class Glyceride:
         Returns:
             Chem.Mol: The RDKit molecule with 3D coordinates.
         """
-        rw, sn_os, _ = self._build_glycerol_backbone()
+        rw, sn_os, _ = self._build_glycerol_backbone()  # the chem mol func and the indices of the backbone
         for idx, fa in enumerate(self.sn):
             if fa is None:
                 continue
@@ -610,6 +624,7 @@ class Glyceride:
         c = rw.AddAtom(Chem.Atom(6))
         rw.AddBond(carbon_idx, c, Chem.BondType.SINGLE)
 
+    # how come there is a missing oxygen here?
     def _build_acyl_chain(self, fa: FattyAcid, rw: Chem.RWMol) -> Tuple[int, List[int]]:
         """
         Build an acyl group for the fatty acid into rw:
@@ -683,6 +698,7 @@ class Glyceride:
 
         return c1, chain_idx
 
+    # where are the hydrogens?
     def _build_glycerol_backbone(
         self,
     ) -> Tuple[Chem.RWMol, Tuple[int, int, int], List[int]]:

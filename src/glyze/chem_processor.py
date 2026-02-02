@@ -368,9 +368,10 @@ class ChemReactSim:
 
         unique_species = list(OrderedSet.union(unique_mags, unique_dags, unique_tgs))
         base_gly = "Glycerol"
+        h2o = "h2o"
         fa_names = [fa.name for fa in list_of_fa]
         gly_names = [specie.name for specie in unique_species]
-        species_names = [base_gly, *fa_names, *gly_names]
+        species_names = [base_gly, h2o, *fa_names, *gly_names]
         species_idx = {nm: i for i, nm in enumerate(species_names)}
         ns = len(species_names)
 
@@ -386,9 +387,9 @@ class ChemReactSim:
                 ks,
                 species_idx,
                 reactants=[base_gly, fa.name],
-                products=[mg_end],
+                products=[mg_end, h2o],
                 k=2.0,
-                name=f"Glyceride + {fa.name} => {mg_end}",
+                name=f"Glyceride + {fa.name} => {mg_end} + h2o",
             )
             ChemReactSim._add_rxn(
                 react_stoic,
@@ -397,9 +398,9 @@ class ChemReactSim:
                 ks,
                 species_idx,
                 reactants=[base_gly, fa.name],
-                products=[mg_mid],
+                products=[mg_mid, h2o],
                 k=1.0,
-                name=f"Glyceride + {fa.name} => {mg_mid}",
+                name=f"Glyceride + {fa.name} => {mg_mid} + h2o",
             )
 
         # Build DAG reactions (reuse prebuilt DAGs)
@@ -415,9 +416,9 @@ class ChemReactSim:
                         ks,
                         species_idx,
                         reactants=[mag.name, fa.name],
-                        products=[dg1],
+                        products=[dg1, h2o],
                         k=1.0,
-                        name=f"{mag.name} + {fa.name} => {dg1}",
+                        name=f"{mag.name} + {fa.name} => {dg1} + h2o",
                     )
                     ChemReactSim._add_rxn(
                         react_stoic,
@@ -426,9 +427,9 @@ class ChemReactSim:
                         ks,
                         species_idx,
                         reactants=[mag.name, fa.name],
-                        products=[dg2],
+                        products=[dg2, h2o],
                         k=1.0,
-                        name=f"{mag.name} + {fa.name} => {dg2}",
+                        name=f"{mag.name} + {fa.name} => {dg2} + h2o",
                     )
                 else:
                     dg1 = dag_lookup[(mag.name, fa.name, 0)].name
@@ -440,9 +441,9 @@ class ChemReactSim:
                         ks,
                         species_idx,
                         reactants=[mag.name, fa.name],
-                        products=[dg1],
+                        products=[dg1, h2o],
                         k=2.0,
-                        name=f"Glyceride + {fa.name} => {dg1}",
+                        name=f"Glyceride + {fa.name} => {dg1} + h2o",
                     )
 
         # Build TG reactions (reuse prebuilt TGs)
@@ -458,9 +459,9 @@ class ChemReactSim:
                     ks,
                     species_idx,
                     reactants=[dag.name, fa.name],
-                    products=[tg1],
+                    products=[tg1, h2o],
                     k=1.0,
-                    name=f"{dag.name} + {fa.name} => {tg1}",
+                    name=f"{dag.name} + {fa.name} => {tg1} + h2o",
                 )
 
         # Initial state vector
@@ -481,40 +482,41 @@ class ChemReactSim:
 
         ks = np.asarray(ks, dtype=float)
 
-        # sanity checks
-        ns = len(species_names)
-        nr = len(rxn_names)
-        assert react_stoic.shape == (
-            ns,
-            nr,
-        ), f"react_stoic shape {react_stoic.shape} != (ns, nr)=({ns}, {nr})"
-        assert prod_stoic.shape == (
-            ns,
-            nr,
-        ), f"prod_stoic shape {prod_stoic.shape} != (ns, nr)=({ns}, {nr})"
-        assert ks.shape == (nr,), f"k_det shape {ks.shape} != (nr,)={nr}"
-        assert init_state.shape == (
-            ns,
-        ), f"init_state shape {init_state.shape} != (ns,)={ns}"
+        # # sanity checks
+        # ns = len(species_names)
+        # nr = len(rxn_names)
+        # assert react_stoic.shape == (
+        #     ns,
+        #     nr,
+        # ), f"react_stoic shape {react_stoic.shape} != (ns, nr)=({ns}, {nr})"
+        # assert prod_stoic.shape == (
+        #     ns,
+        #     nr,
+        # ), f"prod_stoic shape {prod_stoic.shape} != (ns, nr)=({ns}, {nr})"
+        # assert ks.shape == (nr,), f"k_det shape {ks.shape} != (nr,)={nr}"
+        # assert init_state.shape == (
+        #     ns,
+        # ), f"init_state shape {init_state.shape} != (ns,)={ns}"
 
-        print("Species index mapping:")
-        for i, nm in enumerate(species_names):
-            print(f"  [{i:2d}] {nm}")
-        print()
-        print("First few reactions and stoichiometry rows:")
-        for i in range(min(5, len(rxn_names))):
-            print(f"{i:3d}: {rxn_names[i]}")
-            print("    Reactants:", np.where(react_stoic.T[i] != 0)[0])
-            print("    Products: ", np.where(prod_stoic.T[i] != 0)[0])
-        print()
-        np.set_printoptions(linewidth=np.inf)
-        print(f"Printing species names: {species_names}")
-        print(
-            f"Printing reaction stoichiometry:\nReactants:\n{np.array2string(react_stoic.T)}\nProducts:\n{np.array2string(prod_stoic.T)}"
-        )
-        print(f"Printing Initial state: {init_state}")
-        print(f"Printing rate constants: {ks}")
-        print(f"Printing shape of reactant stoichiometry: {react_stoic.shape}")
+        # print("Species index mapping:")
+        # for i, nm in enumerate(species_names):
+        #     print(f"  [{i:2d}] {nm}")
+        # print()
+        # print("First few reactions and stoichiometry rows:")
+        # for i in range(min(5, len(rxn_names))):
+        #     print(f"{i:3d}: {rxn_names[i]}")
+        #     print("    Reactants:", np.where(react_stoic.T[i] != 0)[0])
+        #     print("    Products: ", np.where(prod_stoic.T[i] != 0)[0])
+        # print()
+        # np.set_printoptions(linewidth=np.inf)
+        # print(f"Printing species names: {species_names}")
+        # print(
+        #     f"Printing reaction stoichiometry:\nReactants:\n{np.array2string(react_stoic.T)}\nProducts:\n{np.array2string(prod_stoic.T)}"
+        # )
+        # print(f"Printing Initial state: {init_state}")
+        # print(f"Printing rate constants: {ks}")
+        # print(f"Printing shape of reactant stoichiometry: {react_stoic.shape}")
+
 
         return PKineticSim(
             species_names=species_names,
@@ -732,11 +734,11 @@ class ChemReactSim:
             np.hstack(prod_stoic) if len(prod_stoic) else np.zeros((ns, 0), dtype=float)
         )
 
-        ks = np.asarray(ks, dtype=float)
-        print("Species index mapping:")
-        for i, nm in enumerate(species_names):
-            print(f"  [{i:2d}] {nm}")
-        print()
+        # ks = np.asarray(ks, dtype=float)
+        # print("Species index mapping:")
+        # for i, nm in enumerate(species_names):
+        #     print(f"  [{i:2d}] {nm}")
+        # print()
 
         return PKineticSim(
             species_names=species_names,
