@@ -6,6 +6,7 @@ from rdkit.Chem import AllChem
 import copy
 from pathlib import Path
 
+GLYCEROL_MOL_MASS = 92.09382 # g/mol for C3H8O3
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
     """Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields."""
@@ -188,7 +189,7 @@ class FattyAcid:
         last = None
         for i in range(1, self.length + 1):
             ci = rw.AddAtom(Chem.Atom(6))
-            chain_idx.append = ci
+            chain_idx.append(ci)
             if last is not None:
                 rw.AddBond(last, ci, Chem.BondType.SINGLE)
             last = ci
@@ -244,7 +245,7 @@ class FattyAcid:
         # Build RDkit molecule and sum atomic masses
         mol = self.to_rdkit_mol()
         mass = 0
-        for atom in mol.getAtoms():
+        for atom in mol.GetAtoms():
             mass += atom.GetMass()
 
         return mass

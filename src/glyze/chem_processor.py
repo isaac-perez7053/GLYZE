@@ -748,6 +748,7 @@ class ChemReactSim:
             chem_flag=chem_flag,
         )
 
+    @staticmethod
     def deoderization(mix: GlycerideMix, T: float, P: float) -> GlycerideMix:
         """
         Perform deoderization on a glyceride mix at a given temperature and pressure.
