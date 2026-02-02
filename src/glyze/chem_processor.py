@@ -750,21 +750,6 @@ class ChemReactSim:
             chem_flag=chem_flag,
         )
 
-    def deoderization(mix: GlycerideMix, T: float, P: float) -> GlycerideMix:
-        """
-        Perform deoderization on a glyceride mix at a given temperature and pressure.
-
-        Parameters:
-        -----------
-            mix (GlycerideMix): The glyceride mix to be deoderized.
-            T (float): Temperature in Kelvin.
-            P (float): Pressure in atm.
-
-        Returns:
-        -----------
-            GlycerideMix: The deoderized glyceride mix.
-        """
-
     @staticmethod
     def random_intersterification(g_composition: GlycerideMix):
         """
@@ -836,3 +821,36 @@ class ChemReactSim:
 
         ks.append(float(k))
         rxn_names.append(name)
+
+class DeodorizationSim:
+    """
+    Simulator for deoderization process
+    """
+    def __init__(self):
+        self.pressure = 50 # in mTorr
+        self.temperature = 220 # in Celsius
+        self.residence_time = 30 # in minutes
+        self.area = 1.0 # in m^2 [PALCEHOLDER VALUE. To be updated later with real value]
+        self.time_step = 0.01 # in seconds
+
+    def set_pressure(self, pressure: float): 
+        self.pressure = pressure
+    def set_temperature(self, temperature: float):
+        self.temperature = temperature
+    def set_residence_time(self, residence_time: float):
+        self.residence_time = residence_time
+    
+    def simulate(self, glyceride_mix: GlycerideMix):
+        """
+        Simulate the deodorization process on the given glyceride mix.
+
+        Parameters:
+            glyceride_mix (GlycerideMix): The glyceride mix to be deodorized.
+
+        Returns:
+            GlycerideMix: The deodorized glyceride mix.
+        """
+        # for each glyceride in the mix, calculate the vapor pressure
+        # for each glyceride in the mix, calculate the amount lost per time step (molecules/second)
+        # change the glyceride mix accordingly
+        # loop over time steps until residence time is reached

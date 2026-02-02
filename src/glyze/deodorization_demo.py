@@ -27,4 +27,3 @@ def real_evaporation_rate(x, molar_mass, numCarbons, Temperature, efficiency_fac
     ideal_rate = evaporation_rate(x, molar_mass, numCarbons, Temperature)
     real_rate = ideal_rate * efficiency_factor # efficiency factor to account for real-world conditions
     return real_rate
-

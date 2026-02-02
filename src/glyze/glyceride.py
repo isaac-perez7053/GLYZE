@@ -6,6 +6,8 @@ from rdkit.Chem import AllChem
 import copy
 from pathlib import Path
 
+import scipy
+
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
     """Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields."""
@@ -747,6 +749,16 @@ class Glyceride:
             return fa.length if fa is not None else 0
 
         return (L(self.sn[0]), L(self.sn[1]), L(self.sn[2]))
+    
+    @property
+    def numCarbons(self) -> int:
+        """Total number of carbons in the glyceride."""
+        total_carbons = 0
+        for fa in self.sn:
+            if fa is not None:
+                total_carbons += fa.length
+        total_carbons += 3  # Add 3 carbons from the glycerol backbone
+        return total_carbons
 
     @property
     def name(self) -> str:
@@ -766,6 +778,17 @@ class Glyceride:
             return "".join(parts)
 
         return "G_" + "_".join(fa_name(fa) for fa in self.sn)
+    
+    @property
+    def T_1mTorr_vapor_pressure(self):
+        """Calculate the temperature at which the vapor pressure is 1mTorr via curve fit from data."""
+        Temperature = -400 + 161*scipy.log(self.numCarbons) # K
+        return Temperature
+    
+    @property
+    def enthalpy_of_vaporization(self):
+        enthalpy = 3.18*self.numCarbons + 50.5 #kJ/mol
+        return enthalpy
 
     def __eq__(self, other):
         """Equality based on the signature tuple."""
