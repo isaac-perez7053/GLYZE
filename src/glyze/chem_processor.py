@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from ordered_set import OrderedSet
+from rdkit import Chem
+from rdkit.Chem import AllChem
 
 # TODO: Implement custom k-list and list reactions
 AVOGADRO = 6.02214076e23
@@ -30,7 +32,7 @@ class PKineticSim:
     init_state : np.ndarray
         Initial state vector (ns,).
     """
-
+    masses: list
     species_names: list
     react_stoic: np.ndarray  # R (ns, nr)
     prod_stoic: np.ndarray  # P (ns, nr)
@@ -291,7 +293,7 @@ class ChemReactSim:
         Returns:
             Simulation: Cayenne Simulation object representing the batch reaction.
         """
-
+        masses = []
         react_stoic = []
         prod_stoic = []
         rxn_names: List[str] = []
@@ -366,19 +368,45 @@ class ChemReactSim:
                 unique_tgs.add(tg1)
                 tg_lookup[(dag.name, fa.name)] = tg1
 
+        Gly = Glyceride(sn=(None, None, None))
+        glym = Gly.molar_mass
+
+        # water
+        """Calculate the molar mass of the water in g/mol"""
+        # Build RDkit molecule and sum atomic masses
+        # Initialize empty RWMol
+        rw = Chem.RWMol()
+        # oxygen
+        o = rw.AddAtom(Chem.Atom(8)) 
+
+        # Connect to water
+        mol = rw.GetMol()
+        Chem.SanitizeMol(mol)
+        mol = Chem.AddHs(mol)
+
+        h2omass = 0
+        for atom in mol.GetAtoms():
+            h2omass += atom.GetMass()
+
         unique_species = list(OrderedSet.union(unique_mags, unique_dags, unique_tgs))
-        base_gly = "Glycerol"
+        base_gly = "G_EMPTY_EMPTY_EMPTY"
         h2o = "h2o"
         fa_names = [fa.name for fa in list_of_fa]
         gly_names = [specie.name for specie in unique_species]
+        famolarmasses = [fa.molar_mass for fa in list_of_fa]
+        glymolarmasses = [specie.molar_mass for specie in unique_species]
+        masses = [glym, h2omass, *famolarmasses, *glymolarmasses]
         species_names = [base_gly, h2o, *fa_names, *gly_names]
         species_idx = {nm: i for i, nm in enumerate(species_names)}
         ns = len(species_names)
 
+        # Creating a storage of masses
+        # names_masses = {}
         # Generate monoglycerides and rxn_names (reuse prebuilt MAGs)
         for fa in list_of_fa:
             mg_end = mag_lookup[("end", fa.name)].name
             mg_mid = mag_lookup[("mid", fa.name)].name
+            # names_masses = {fa.name: fa.molar_mass}
             # Double count for position 1 and 3 equivalence
             ChemReactSim._add_rxn(
                 react_stoic,
@@ -519,6 +547,7 @@ class ChemReactSim:
 
 
         return PKineticSim(
+            masses=masses,
             species_names=species_names,
             react_stoic=react_stoic,
             prod_stoic=prod_stoic,
@@ -551,6 +580,7 @@ class ChemReactSim:
             Simulation: runs the graph to see what TAGs will be left
         """
         #
+        masses = []
         react_stoic = []
         prod_stoic = []
         rxn_names: List[str] = []
@@ -633,11 +663,31 @@ class ChemReactSim:
                 tg_lookup[(dag0.name, fa0.name)] = list_of_stuff[i]
                 tg_lookup[(dag2.name, fa2.name)] = list_of_stuff[i]
 
+        # water
+        """Calculate the molar mass of the water in g/mol"""
+        # Build RDkit molecule and sum atomic masses
+        # Initialize empty RWMol
+        rw = Chem.RWMol()
+        # oxygen
+        o = rw.AddAtom(Chem.Atom(8)) 
+
+        # Connect to water
+        mol = rw.GetMol()
+        Chem.SanitizeMol(mol)
+        mol = Chem.AddHs(mol)
+
+        h2omass = 0
+        for atom in mol.GetAtoms():
+            h2omass += atom.GetMass()
+
         unique_species = list(OrderedSet.union(unique_dags, unique_tgs))
         midend = OrderedSet(mid + end)  # Combine the two lists together
         init_tags = [init_tags.name for init_tags in list_of_stuff]
         fa_names = [fa.name for fa in midend]
         gly_names = [specie.name for specie in unique_species]
+        famolarmasses = [(fa.molar_mass - h2omass) for fa in midend]
+        glymolarmasses = [specie.molar_mass for specie in unique_species]
+        masses = [*famolarmasses, *glymolarmasses]
         species_names = [*fa_names, *OrderedSet(gly_names + init_tags)]
         species_idx = {nm: i for i, nm in enumerate(species_names)}
 
@@ -741,6 +791,7 @@ class ChemReactSim:
         # print()
 
         return PKineticSim(
+            masses=masses,
             species_names=species_names,
             react_stoic=react_stoic,
             prod_stoic=prod_stoic,
@@ -749,21 +800,6 @@ class ChemReactSim:
             rxn_names=rxn_names,
             chem_flag=chem_flag,
         )
-
-    def deoderization(mix: GlycerideMix, T: float, P: float) -> GlycerideMix:
-        """
-        Perform deoderization on a glyceride mix at a given temperature and pressure.
-
-        Parameters:
-        -----------
-            mix (GlycerideMix): The glyceride mix to be deoderized.
-            T (float): Temperature in Kelvin.
-            P (float): Pressure in atm.
-
-        Returns:
-        -----------
-            GlycerideMix: The deoderized glyceride mix.
-        """
 
     @staticmethod
     def random_intersterification(g_composition: GlycerideMix):
