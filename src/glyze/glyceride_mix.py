@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 from typing import Dict, Mapping, List, Tuple, Union
-from glyze.glyceride import Glyceride
+from glyze.glyceride import Glyceride, FattyAcid
 import MDAnalysis as mda
 from glyze.packmol import PackmolSimulator
 import shutil
@@ -92,7 +92,7 @@ class GlycerideMix:
 
     Attributes
     ----------
-    mix : Dict[Glyceride, float]
+    mix : 
         Mapping Glyceride objects to their quantities.
     units : str
         Units for the quantities (default "mole").
@@ -100,22 +100,24 @@ class GlycerideMix:
         Glycerides in the same order as the input `mix` arg.
     mol_list : List[Chem.Mol]
         RDKit molecules created from each glyceride in `glyceride_list`;
-        built via `glyceride.glyceride_to_rdkit(optimize=True)`.
+        built via `glyceride.to_rdkit_mol(optimize=True)`.
     _mol_by_glyceride : Dict[Glyceride, Chem.Mol]
         Convenience mapping: glyceride -> template mol.
     """
 
-    def __init__(self, mix: List[Tuple[Glyceride, float]], units: str = "mole"):
+    def __init__(self, mix, units: str = "mole"):
         # Dict mapping glyceride -> quantity
-        self.mix: Dict[Glyceride, float] = {g: qty for g, qty in mix}
+        self.mix  = {g: qty for g, qty in mix}
+        print(self.mix)
         self.units = units
 
         # Ordered list reflecting the original mix argument
-        self.glyceride_list: List[Glyceride] = [g for g, _ in mix]
+        self.glyceride_list: List[Glyceride] = [g for g, _ in mix if isinstance(g, Glyceride)]
+        self.fa_list: List[FattyAcid] = [fa for fa, _ in mix if isinstance(fa, FattyAcid)]
 
         # RDKit mols corresponding to glyceride_list
         self.mol_list: List[Chem.Mol] = [
-            g.glyceride_to_rdkit(optimize=True) for g, _ in mix
+            g.to_rdkit_mol(optimize=True) for g, _ in mix
         ]
 
         # Map each glyceride to a single mol template
@@ -235,7 +237,7 @@ class GlycerideMix:
             self.mix[glyceride] = quantity
             # maintain ordered lists / mapping
             self.glyceride_list.append(glyceride)
-            mol = glyceride.glyceride_to_rdkit(optimize=True)
+            mol = glyceride.to_rdkit_mol(optimize=True)
             self.mol_list.append(mol)
             self._mol_by_glyceride[glyceride] = mol
 
@@ -321,7 +323,7 @@ class GlycerideMix:
             try:
                 mol = self._mol_by_glyceride[g]
             except KeyError:
-                mol = g.glyceride_to_rdkit(optimize=True)
+                mol = g.to_rdkit_mol(optimize=True)
                 self._mol_by_glyceride[g] = mol
 
             resname = resname_map[g]

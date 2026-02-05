@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 from typing import Dict, List, Tuple, Set
-from glyze.glyceride import Glyceride, FattyAcid, SymmetricGlyceride
+from glyze.glyceride import Glyceride, FattyAcid, SymmetricGlyceride, FattyAcid
 from glyze.glyceride_mix import GlycerideMix
 from dataclasses import dataclass
 from scipy.integrate import solve_ivp
@@ -98,6 +98,7 @@ class PKineticSim:
             atol=atol,
             vectorized=False,
         )
+        self.sol = sol
         return sol
 
     def plot(self, sol, show_species: list[str] | None = None, figsize=(10, 6)):
@@ -204,6 +205,27 @@ class PKineticSim:
         pio.renderers.default = "browser"
         fig.show()
 
+    @property
+    def glyceride_mix(self):
+        """
+        Glyceride mixture output 
+        """
+        if hasattr(self, 'sol'):
+            if hasattr(self, 'species_names'):
+                # Cut off glycerol
+                list_of_gly = [Glyceride.from_name(x) if x.count('_') == 3 else FattyAcid.from_name(x) for x in self.species_names[1:]]
+                # Grab the final concentration of every species and create a list of them that 
+                # correspond to the list of glycerides
+                
+                # Cut off glycerol
+                list_of_conc = [x[-1] for x in self.sol.y[1:]]
+                print(f"Printing the list of glycerides:\n{list_of_gly}\n")
+                print(f"Printing the list of concentrations:\n{list_of_conc}")
+                return GlycerideMix(mix=[x for x in zip(list_of_gly, list_of_conc)])
+            else: 
+                raise ValueError("Please define the name of the species")
+        else: 
+            raise ValueError("Please run the solver before grabbing the results")
 
 class ChemReactSim:
     """

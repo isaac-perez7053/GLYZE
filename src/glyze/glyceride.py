@@ -155,6 +155,71 @@ class FattyAcid:
                     f"branch position C{pos} out of range for C{self.length}"
                 )
 
+    @classmethod
+    def from_name(cls, fa_str: str) -> Optional[FattyAcid]:
+        """
+        Return the fatty acid
+        """
+        if fa_str == "EMPTY":
+            return None
+        if not fa_str.startswith("N"):
+            raise ValueError(f"Invalid fatty acid format: {fa_str}")
+        length = int(fa_str[1:3])
+        if "D" not in fa_str:
+            raise ValueError(f"Invalid fatty acid format: {fa_str}")
+        d_index = fa_str.index("D")
+        num_db = int(fa_str[d_index + 1 : d_index + 3])
+        db_positions = []
+        db_stereo = []
+        branches = []
+        i = d_index + 3
+        while i < len(fa_str):
+            if fa_str[i] == "P":
+                i += 1
+                for _ in range(num_db):
+                    pos = int(fa_str[i : i + 2])
+                    db_positions.append(pos)
+                    i += 2
+                    if i < len(fa_str) and fa_str[i] in (
+                        "Z",
+                        "E",
+                        "z",
+                        "e",
+                        "C",
+                        "c",
+                        "T",
+                        "t",
+                    ):
+                        db_stereo.append(fa_str[i].upper())
+                        i += 1
+                    else:
+                        db_stereo.append("Z")  # Default to Z if not specified
+            elif fa_str[i] == "M":
+                i += 1
+                while i + 1 < len(fa_str) and fa_str[i : i + 2].isdigit():
+                    pos = int(fa_str[i : i + 2])
+                    branches.append((pos, "Me"))
+                    i += 2
+            elif fa_str[i] == "O":
+                if fa_str[i : i + 2] == "OH":
+                    i += 2
+                    while i + 1 < len(fa_str) and fa_str[i : i + 2].isdigit():
+                        pos = int(fa_str[i : i + 2])
+                        branches.append((pos, "OH"))
+                        i += 2
+                else:
+                    raise ValueError(f"Invalid fatty acid format: {fa_str}")
+            else:
+                raise ValueError(f"Invalid fatty acid format: {fa_str}")
+        if len(db_positions) != num_db:
+            raise ValueError(
+                f"Number of double bonds does not match positions in: {fa_str}"
+            )
+        return FattyAcid(
+            length, tuple(db_positions), tuple(db_stereo), tuple(branches)
+        )
+
+
     def canonical(self) -> "FattyAcid":
         """
         Returns a canonical (normalized) version of the fatty acid. Ensures that
@@ -199,11 +264,7 @@ class FattyAcid:
         last = carboxyl #adds to the chain
         for i in range(2, self.length + 1):
             ci = rw.AddAtom(Chem.Atom(6))
-<<<<<<< HEAD
             chain_idx.append(ci)
-=======
-            chain_idx.append(ci) #bug?
->>>>>>> 43af217eed951993563a6097cd57b33d217dbc7e
             if last is not None:
                 rw.AddBond(last, ci, Chem.BondType.SINGLE)
             last = ci
@@ -230,11 +291,14 @@ class FattyAcid:
             # Assign E/Z stereo if possible
             # Pick on neighbor on each side that is not the other double-bond atom
             a_neighbors = [
-                nbr.getIdx()
+                nbr.GetIdx()
                 for nbr in rw.GetAtomWithIdx(a).GetNeighbors()
                 if nbr.GetIdx() != b
             ]
-            b_neighbors = [nbr.getIdx() for nbr in rw.GetAtomWithIdx(b)]
+            b_neighbors = [nbr.GetIdx()
+                for nbr in rw.GetAtomWithIdx(b).GetNeighbors() 
+                if nbr.GetIdx() != a
+            ]
             if a_neighbors and b_neighbors:
                 bond.SetStereoAtoms(a_neighbors[0], b_neighbors[0])
                 norm = st.strip().lower()
@@ -288,6 +352,7 @@ class FattyAcid:
         for bpos, _ in self.branches:
             parts.append(f"M{bpos:02d}")  # Only 'Me' supported now
         return "".join(parts)
+    
 
 
 class Glyceride:
@@ -336,74 +401,14 @@ class Glyceride:
             Glyceride: The corresponding Glyceride object.
         """
 
-        def parse_fatty_acid(fa_str: str) -> Optional[FattyAcid]:
-            if fa_str == "EMPTY":
-                return None
-            if not fa_str.startswith("N"):
-                raise ValueError(f"Invalid fatty acid format: {fa_str}")
-            length = int(fa_str[1:3])
-            if "D" not in fa_str:
-                raise ValueError(f"Invalid fatty acid format: {fa_str}")
-            d_index = fa_str.index("D")
-            num_db = int(fa_str[d_index + 1 : d_index + 3])
-            db_positions = []
-            db_stereo = []
-            branches = []
-            i = d_index + 3
-            while i < len(fa_str):
-                if fa_str[i] == "P":
-                    i += 1
-                    for _ in range(num_db):
-                        pos = int(fa_str[i : i + 2])
-                        db_positions.append(pos)
-                        i += 2
-                        if i < len(fa_str) and fa_str[i] in (
-                            "Z",
-                            "E",
-                            "z",
-                            "e",
-                            "C",
-                            "c",
-                            "T",
-                            "t",
-                        ):
-                            db_stereo.append(fa_str[i].upper())
-                            i += 1
-                        else:
-                            db_stereo.append("Z")  # Default to Z if not specified
-                elif fa_str[i] == "M":
-                    i += 1
-                    while i + 1 < len(fa_str) and fa_str[i : i + 2].isdigit():
-                        pos = int(fa_str[i : i + 2])
-                        branches.append((pos, "Me"))
-                        i += 2
-                elif fa_str[i] == "O":
-                    if fa_str[i : i + 2] == "OH":
-                        i += 2
-                        while i + 1 < len(fa_str) and fa_str[i : i + 2].isdigit():
-                            pos = int(fa_str[i : i + 2])
-                            branches.append((pos, "OH"))
-                            i += 2
-                    else:
-                        raise ValueError(f"Invalid fatty acid format: {fa_str}")
-                else:
-                    raise ValueError(f"Invalid fatty acid format: {fa_str}")
-            if len(db_positions) != num_db:
-                raise ValueError(
-                    f"Number of double bonds does not match positions in: {fa_str}"
-                )
-            return FattyAcid(
-                length, tuple(db_positions), tuple(db_stereo), tuple(branches)
-            )
-
         if not name.startswith("G_"):
             raise ValueError(f"Invalid glyceride format: {name}")
         parts = name[2:].split("_")
         if len(parts) != 3:
             raise ValueError(f"Glyceride must have three fatty acids: {name}")
-        fa1 = parse_fatty_acid(parts[0])
-        fa2 = parse_fatty_acid(parts[1])
-        fa3 = parse_fatty_acid(parts[2])
+        fa1 = FattyAcid.from_name(parts[0])
+        fa2 = FattyAcid.from_name(parts[1])
+        fa3 = FattyAcid.from_name(parts[2])
         return cls((fa1, fa2, fa3))
 
     def signature_tuple(self) -> Tuple:
@@ -518,7 +523,7 @@ class Glyceride:
         print(f"PDB file created at: {pdb_filepath}")
         return pdb_filepath
 
-    def glyceride_to_rdkit(self, optimize: bool = True) -> Chem.Mol:
+    def to_rdkit_mol(self, optimize: bool = True) -> Chem.Mol:
         """
         Build an RDKit molecule for the given Glyceride, embed in 3D, and relax.
         Uses kwargs-only ETKDG (ETversion=2) for compatibility with your RDKit.
@@ -572,7 +577,7 @@ class Glyceride:
         """
         if mol.GetNumConformers() == 0:
             raise RuntimeError(
-                "No 3D conformer found; create with glyceride_to_rdkit(optimize=True)."
+                "No 3D conformer found; create with to_rdkit_mol(optimize=True)."
             )
 
         conf = mol.GetConformer()
@@ -733,7 +738,7 @@ class Glyceride:
     @property
     def molar_mass(self) -> float:
         """Calculate the molar mass of a glyceride in g/mol"""
-        mol = self.glyceride_to_rdkit()
+        mol = self.to_rdkit_mol()
         mass = 0
         for atom in mol.GetAtoms():
             mass += atom.GetMass()
