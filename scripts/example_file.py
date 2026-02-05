@@ -96,11 +96,11 @@ def main():
         fchk_paths=fchk_paths,
         pdb_paths=pdb_paths,
         resname_map=resname_map,
-        # multiwfn_exe="multiwfn",
-        # multiwfn_script="cm5_menu.txt",
-        # gmx_bin="gmx",
-        # gmxlib="/path/to/share/gromacs/top",
-        # packmol_exe="packmol",
+        multiwfn_exe="multiwfn",
+        multiwfn_script="cm5_menu.txt",
+        gmx_bin="gmx",
+        gmxlib="/path/to/share/gromacs/top",
+        packmol_exe="packmol",
     )
 
     model.run_multiwfn_and_build_tops()
