@@ -12,7 +12,7 @@ from rdkit.Geometry import Point3D
 from pathlib import Path
 from typing import TypeAlias
 
-MixtureComponent: TypeAlias = "Glyceride | FattyAcid"
+MixtureComponent: TypeAlias = "Glyceride | FattyAcid | str"
 
 RESNAME_FORBIDDEN = {
     "SOL",
@@ -116,10 +116,13 @@ def _canonical_component(comp: MixtureComponent) -> MixtureComponent:
 class GlycerideMix:
     def __init__(self, mix, units: str = "mole", *, sort: bool = True):
         self.units = units
+
+        # Take in a dictionary or iterable pair to create a list of tuples
         pairs = _as_pairs(mix)
         merged_qty: Dict[str, float] = {}
         rep_obj: Dict[str, MixtureComponent] = {}
 
+        # Separate information to ensure information stays ordered
         for comp, qty in pairs:
             comp_c = _canonical_component(comp)
             key = _canonical_key(comp_c)
@@ -135,6 +138,7 @@ class GlycerideMix:
         self.components: List[MixtureComponent] = [rep_obj[k] for k in keys]
         self.quantities: List[float] = [merged_qty[k] for k in keys]
 
+        # Build the mixture dictionary
         self.mix: Dict[MixtureComponent, float] = {
             rep_obj[k]: merged_qty[k] for k in keys
         }

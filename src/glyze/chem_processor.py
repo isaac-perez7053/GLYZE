@@ -212,16 +212,21 @@ class PKineticSim:
         """
         if hasattr(self, 'sol'):
             if hasattr(self, 'species_names'):
-                # Cut off glycerol
-                list_of_gly = [Glyceride.from_name(x) if x.count('_') == 3 else FattyAcid.from_name(x) for x in self.species_names[1:]]
+                list_of_gly = [Glyceride.from_name(x) if x.count('_') == 3 else FattyAcid.from_name(x) for x in self.species_names[1:] if x not in ('h2o', 'glycerol')]
                 # Grab the final concentration of every species and create a list of them that 
                 # correspond to the list of glycerides
                 
-                # Cut off glycerol
-                list_of_conc = [x[-1] for x in self.sol.y[1:]]
-                print(f"Printing the list of glycerides:\n{list_of_gly}\n")
-                print(f"Printing the list of concentrations:\n{list_of_conc}")
-                return GlycerideMix(mix=[x for x in zip(list_of_gly, list_of_conc)])
+                # Cut off glycerol and h2o to match list_of_gly
+                list_of_conc = [x[-1] for i, x in enumerate(self.sol.y[1:], 1) if self.species_names[i] not in ('h2o', 'glycerol')]
+
+                # Append together glycerol and water
+                list_of_components = ['glycerol', 'h20']
+                list_of_all_conc = [self.sol.y[0][-1], self.sol.y[1][-1]]
+                list_of_components += list_of_gly
+                list_of_all_conc += list_of_conc
+
+
+                return GlycerideMix(mix=[x for x in zip(list_of_components, list_of_all_conc)])
             else: 
                 raise ValueError("Please define the name of the species")
         else: 
