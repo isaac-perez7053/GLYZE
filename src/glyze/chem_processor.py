@@ -212,15 +212,15 @@ class PKineticSim:
         """
         if hasattr(self, 'sol'):
             if hasattr(self, 'species_names'):
-                list_of_gly = [Glyceride.from_name(x) if x.count('_') == 3 else FattyAcid.from_name(x) for x in self.species_names[1:] if x not in ('h2o', 'glycerol')]
+                list_of_gly = [Glyceride.from_name(x) if x.count('_') == 3 else FattyAcid.from_name(x) for x in self.species_names[1:] if x not in ('H2O', 'glycerol')]
                 # Grab the final concentration of every species and create a list of them that 
                 # correspond to the list of glycerides
                 
-                # Cut off glycerol and h2o to match list_of_gly
-                list_of_conc = [x[-1] for i, x in enumerate(self.sol.y[1:], 1) if self.species_names[i] not in ('h2o', 'glycerol')]
+                # Cut off glycerol and H2O to match list_of_gly
+                list_of_conc = [x[-1] for i, x in enumerate(self.sol.y[1:], 1) if self.species_names[i] not in ('H2O', 'glycerol')]
 
                 # Append together glycerol and water
-                list_of_components = ['glycerol', 'h20']
+                list_of_components = ['glycerol', 'H2O']
                 list_of_all_conc = [self.sol.y[0][-1], self.sol.y[1][-1]]
                 list_of_components += list_of_gly
                 list_of_all_conc += list_of_conc
@@ -283,20 +283,125 @@ class ChemReactSim:
 
         return unique_species
 
-    @staticmethod
-    def random_esterification(list_of_fa: List[FattyAcid]):
+    @staticmethod 
+    def p_kinetic_esterification_rxn_list(
+        list_of_fa: List[FattyAcid],
+    ) -> List[str]:
         """
-        Perform esterification of glycerol with given fatty acids.
-
-        Args:
-            glycerol (Glycerol): The glycerol molecule.
-            fatty_acids (list of FattyAcid): List of fatty acids to esterify with.
-
-        Returns:
-            Glyceride_Composition: The resulting glyceride composition.
+        Return a list containing strings that each represent the 
+        chemical reactions occurring in the esterification reaction
+        shown above.
+        
+        Parameters:
+            list_of_fa (List[FattyAcid]): List of fatty acid objects.
+        
+        Returns: 
+            List[str]: List of chemical reaction equations
         """
-        # Implementation of esterification logic
-        pass
+        list_of_rxns = []
+
+        # Build all unique species once, and REUSE them when building reactions
+        unique_mags = OrderedSet()
+        mag_lookup: Dict[Tuple[str, str], SymmetricGlyceride] = (
+            {}
+        )  # (pos_tag, fa.name) -> MAG
+        for fa in list_of_fa:
+            # Count for fa attachment in middle and end positions
+            # Formated as [glyceride, fatty acid]
+            # (We will now encode these counts in full-length rows via _add_rxn.)
+            # Generate monoglycerides and rxn_names
+            mg_end = SymmetricGlyceride((fa, None, None))
+            mg_mid = SymmetricGlyceride((None, fa, None))
+            unique_mags.add(mg_end)
+            unique_mags.add(mg_mid)
+            mag_lookup[("end", fa.name)] = mg_end
+            mag_lookup[("mid", fa.name)] = mg_mid
+
+        unique_dags = OrderedSet()
+        dag_lookup: Dict[Tuple[str, str, int], SymmetricGlyceride] = (
+            {}
+        )  # (mag.name, fa.name, index) -> DAG
+
+        for mag in unique_mags:
+            # Generate all the diglycerides form the monoglycerides
+            for fa in list_of_fa:
+                # Count for fa attachment in middle and end positions
+                # Formated as [monoglyceride, fatty acid]
+                # Generate diglycerides and rxn_names
+                # If we have mag as (fa1, None, None), we can form (fa1, fa2, None)
+                # or (fa1, None, fa2)
+                if mag.sn[0] is not None:
+                    dg1 = mag.add_fatty_acid(index=1, fatty_acid=fa)
+                    dg2 = mag.add_fatty_acid(index=2, fatty_acid=fa)
+                    unique_dags.add(dg1)
+                    unique_dags.add(dg2)
+                    dag_lookup[(mag.name, fa.name, 1)] = dg1
+                    dag_lookup[(mag.name, fa.name, 2)] = dg2
+                # Else if we have mag as (None, fa1, None), we can only form (fa2, fa1, None)
+                else:
+                    dg1 = mag.add_fatty_acid(index=0, fatty_acid=fa)
+                    unique_dags.add(dg1)
+                    dag_lookup[(mag.name, fa.name, 0)] = dg1
+
+        unique_tgs = OrderedSet()
+        tg_lookup: Dict[Tuple[str, str], SymmetricGlyceride] = (
+            {}
+        )  # (dag.name, fa.name) -> TG
+
+        for dag in unique_dags:
+            for fa in list_of_fa:
+                # Count for fa attachment in middle and end positions
+                # Formated as [glyceride, fatty acid]
+                # Generate triglycerides and rxn_names
+                # Fill the fatty acid in the empty position knowing that the first
+                # position must be filled already
+                if dag.sn[1] is None:
+                    tg1 = dag.add_fatty_acid(index=1, fatty_acid=fa)
+                elif dag.sn[2] is None:
+                    tg1 = dag.add_fatty_acid(index=2, fatty_acid=fa)
+                else:
+                    raise ValueError("Unexpected diglyceride structure")
+                unique_tgs.add(tg1)
+                tg_lookup[(dag.name, fa.name)] = tg1
+
+        unique_species = list(OrderedSet.union(unique_mags, unique_dags, unique_tgs))
+        base_gly = "Glycerol"
+        H2O = "H2O"
+        fa_names = [fa.name for fa in list_of_fa]
+        gly_names = [specie.name for specie in unique_species]
+        species_names = [base_gly, H2O, *fa_names, *gly_names]
+        species_idx = {nm: i for i, nm in enumerate(species_names)}
+        ns = len(species_names)
+
+        # Generate monoglycerides and rxn_names (reuse prebuilt MAGs)
+        for fa in list_of_fa:
+            mg_end = mag_lookup[("end", fa.name)].name
+            mg_mid = mag_lookup[("mid", fa.name)].name
+            list_of_rxns.append(f"Glyceride + {fa.name} → {mg_end} + H2O")
+            list_of_rxns.append(f"Glyceride + {fa.name} → {mg_mid} + H2O")
+
+        # Build DAG reactions (reuse prebuilt DAGs)
+        for mag in unique_mags:
+            for fa in list_of_fa:
+                if mag.sn[0] is not None:
+                    dg1 = dag_lookup[(mag.name, fa.name, 1)].name
+                    dg2 = dag_lookup[(mag.name, fa.name, 2)].name
+                    list_of_rxns.append(f"{mag.name} + {fa.name} → {dg1} + H2O")
+                    list_of_rxns.append(f"{mag.name} + {fa.name} → {dg2} + H2O")
+        
+                else:
+                    dg1 = dag_lookup[(mag.name, fa.name, 0)].name
+                    # two equivalent ends on MAG(mid)
+                    list_of_rxns.append(f"Glyceride + {fa.name} → {dg1} + H2O")
+                    
+        # Build TG reactions (reuse prebuilt TGs)
+        for dag in unique_dags:
+            for fa in list_of_fa:
+                tg1 = tg_lookup[(dag.name, fa.name)].name
+                list_of_rxns.append(f"{dag.name} + {fa.name} → {tg1} + H2O")
+
+        # Convert list of column vectors into full (ns, nr) matrices
+        return list_of_rxns
 
     @staticmethod
     def p_kinetic_esterification(
@@ -316,7 +421,7 @@ class ChemReactSim:
             chem_flag (bool): If True, divide by avogadro's number while calculating stochastic rate constants.
 
         Returns:
-            Simulation: Cayenne Simulation object representing the batch reaction.
+            PKineticSim: PKineticSim object representing the batch reaction.
         """
 
         react_stoic = []
@@ -395,10 +500,10 @@ class ChemReactSim:
 
         unique_species = list(OrderedSet.union(unique_mags, unique_dags, unique_tgs))
         base_gly = "Glycerol"
-        h2o = "h2o"
+        H2O = "H2O"
         fa_names = [fa.name for fa in list_of_fa]
         gly_names = [specie.name for specie in unique_species]
-        species_names = [base_gly, h2o, *fa_names, *gly_names]
+        species_names = [base_gly, H2O, *fa_names, *gly_names]
         species_idx = {nm: i for i, nm in enumerate(species_names)}
         ns = len(species_names)
 
@@ -414,9 +519,9 @@ class ChemReactSim:
                 ks,
                 species_idx,
                 reactants=[base_gly, fa.name],
-                products=[mg_end, h2o],
+                products=[mg_end, H2O],
                 k=2.0,
-                name=f"Glyceride + {fa.name} => {mg_end} + h2o",
+                name=f"Glyceride + {fa.name} => {mg_end} + H2O",
             )
             ChemReactSim._add_rxn(
                 react_stoic,
@@ -425,9 +530,9 @@ class ChemReactSim:
                 ks,
                 species_idx,
                 reactants=[base_gly, fa.name],
-                products=[mg_mid, h2o],
+                products=[mg_mid, H2O],
                 k=1.0,
-                name=f"Glyceride + {fa.name} => {mg_mid} + h2o",
+                name=f"Glyceride + {fa.name} => {mg_mid} + H2O",
             )
 
         # Build DAG reactions (reuse prebuilt DAGs)
@@ -443,9 +548,9 @@ class ChemReactSim:
                         ks,
                         species_idx,
                         reactants=[mag.name, fa.name],
-                        products=[dg1, h2o],
+                        products=[dg1, H2O],
                         k=1.0,
-                        name=f"{mag.name} + {fa.name} => {dg1} + h2o",
+                        name=f"{mag.name} + {fa.name} => {dg1} + H2O",
                     )
                     ChemReactSim._add_rxn(
                         react_stoic,
@@ -454,9 +559,9 @@ class ChemReactSim:
                         ks,
                         species_idx,
                         reactants=[mag.name, fa.name],
-                        products=[dg2, h2o],
+                        products=[dg2, H2O],
                         k=1.0,
-                        name=f"{mag.name} + {fa.name} => {dg2} + h2o",
+                        name=f"{mag.name} + {fa.name} => {dg2} + H2O",
                     )
                 else:
                     dg1 = dag_lookup[(mag.name, fa.name, 0)].name
@@ -468,9 +573,9 @@ class ChemReactSim:
                         ks,
                         species_idx,
                         reactants=[mag.name, fa.name],
-                        products=[dg1, h2o],
+                        products=[dg1, H2O],
                         k=2.0,
-                        name=f"Glyceride + {fa.name} => {dg1} + h2o",
+                        name=f"Glyceride + {fa.name} => {dg1} + H2O",
                     )
 
         # Build TG reactions (reuse prebuilt TGs)
@@ -486,9 +591,9 @@ class ChemReactSim:
                     ks,
                     species_idx,
                     reactants=[dag.name, fa.name],
-                    products=[tg1, h2o],
+                    products=[tg1, H2O],
                     k=1.0,
-                    name=f"{dag.name} + {fa.name} => {tg1} + h2o",
+                    name=f"{dag.name} + {fa.name} => {tg1} + H2O",
                 )
 
         # Initial state vector
@@ -554,52 +659,38 @@ class ChemReactSim:
             rxn_names=rxn_names,
             chem_flag=chem_flag,
         )
-
+    
     @staticmethod
-    def p_kinetic_interesterification(
-        list_of_stuff: List[Glyceride],
-        initial_conc: List[int],
+    def p_kinetic_intersterification_rxn_list(
+        list_of_glycerides: List[Glyceride],
         plucked: List[str],
         arranged: List[str],
-        k_calc: str = "permutation",
-        chem_flag=False,
-    ) -> PKineticSim:
+    ) -> List[str]:
         """
-        Will simulate the bath reaction for the given glyceride spieces.
+        Generate a list of strings, representing the chemical equations
+        active in the simulation
 
         Parameters:
-            list_of_stuff (List[Glyceride]): List of the MAGs, DAGs, TAGs present in the reaction
-            initial_conc (List[int]): List of initial concentrtions for each MAGs, DAGs, or TAGs
-            k_calc (str): Method to calculate rate constants. Options are "permutation" or
-                                    "random". Default is "permutation".
-            chem_flag (bool): If True, divide by avogadro's number while calculating stochastic rate constants.
+            list_of_glycerides (List[Glyceride]): List of the MAGs, DAGs, TAGs present in the reaction
+            plucked (List[str]):
+            arranged (List[str]): 
 
-        Returns:
-            Simulation: runs the graph to see what TAGs will be left
+        Returns: 
+            List[str]: A list of chemical reaction equations present in the simulation
         """
-        #
-        react_stoic = []
-        prod_stoic = []
-        rxn_names: List[str] = []
-        ks = []
-
-        # First break TAGs and form DAGs and FAs
-
-        if len(initial_conc) != len(list_of_stuff):
-            raise ValueError("initial_conc must have the same length as list_of_fa")
-
             # Build all unique species once, and REUSE them when building reactions
         unique_dags = OrderedSet()
         dag_lookup: Dict[Tuple[str, int], Tuple[str, SymmetricGlyceride]] = (
             {}
         )  # (gly.name, fa.name, index) -> DAG + fatty acid
+        list_of_rxns = []
 
         # list of fatty acids that can only react to either the ends or the middles
         mid: List[FattyAcid] = []
         end: List[FattyAcid] = []
 
-        for i in range(len(list_of_stuff)):
-            tag = list_of_stuff[i]
+        for i in range(len(list_of_glycerides)):
+            tag = list_of_glycerides[i]
             fa0, fa1, fa2 = tag.sn
             if plucked[i] == "end":
                 dag0, _ = tag.remove_fatty_acid(index=0)  # G_None_FA_FA
@@ -650,19 +741,146 @@ class ChemReactSim:
                     else:
                         raise ValueError("Unexpected diglyceride structure")
 
-        for i in range(len(list_of_stuff)):
+        for i in range(len(list_of_glycerides)):
             if plucked[i] == arranged[i]:
                 dag, fa = tag.remove_fatty_acid(index=1)
-                tg_lookup[(dag.name, fa.name)] = list_of_stuff[i]
+                tg_lookup[(dag.name, fa.name)] = list_of_glycerides[i]
             else:
                 dag0, fa0 = tag.remove_fatty_acid(index=0)
                 dag2, fa2 = tag.remove_fatty_acid(index=2)
-                tg_lookup[(dag0.name, fa0.name)] = list_of_stuff[i]
-                tg_lookup[(dag2.name, fa2.name)] = list_of_stuff[i]
+                tg_lookup[(dag0.name, fa0.name)] = list_of_glycerides[i]
+                tg_lookup[(dag2.name, fa2.name)] = list_of_glycerides[i]
+
+        # build reaction names
+        for i, tag in enumerate(list_of_glycerides):
+            plucked_value = plucked[i]
+            if plucked_value == "end":
+                fa0, dag0 = dag_lookup[(tag.name, 0)]
+                fa2, dag2 = dag_lookup[(tag.name, 2)]
+                list_of_rxns.append(f"{tag.name} => {dag0.name} + {fa0}")
+                list_of_rxns.append(f"{tag.name} => {dag2.name} + {fa2}")
+            else:
+                fa1, dag1 = dag_lookup[(tag.name, 1)]
+                list_of_rxns.append(f"{tag.name} => {dag1.name} + {fa1}")
+
+        for dag in unique_dags:
+            if dag.sn[1] is not None:
+                for fa in end:
+                    tg1 = tg_lookup[(dag.name, fa.name)].name
+                    list_of_rxns.append(f"{dag.name} + {fa.name} => {tg1}")
+            else:
+                for fa in mid:
+                    tg1 = tg_lookup[(dag.name, fa.name)].name
+                    list_of_rxns.append(f"{dag.name} + {fa.name} => {tg1}")
+
+        return list_of_rxns
+
+    @staticmethod
+    def p_kinetic_interesterification(
+        list_of_glycerides: List[Glyceride],
+        initial_conc: List[int],
+        plucked: List[str],
+        arranged: List[str],
+        k_calc: str = "permutation",
+        chem_flag=False,
+    ) -> PKineticSim:
+        """
+        Will simulate the bath reaction for the given glyceride spieces.
+
+        Parameters:
+            list_of_glycerides (List[Glyceride]): List of the MAGs, DAGs, TAGs present in the reaction
+            initial_conc (List[int]): List of initial concentrtions for each MAGs, DAGs, or TAGs
+            chem_flag (bool): If True, divide by avogadro's number while calculating stochastic rate constants.
+
+        Returns:
+            PKineticSimulation: runs the graph to see what TAGs will be left
+        """
+        #
+        react_stoic = []
+        prod_stoic = []
+        rxn_names: List[str] = []
+        ks = []
+
+        # First break TAGs and form DAGs and FAs
+
+        if len(initial_conc) != len(list_of_glycerides):
+            raise ValueError("initial_conc must have the same length as list_of_fa")
+
+            # Build all unique species once, and REUSE them when building reactions
+        unique_dags = OrderedSet()
+        dag_lookup: Dict[Tuple[str, int], Tuple[str, SymmetricGlyceride]] = (
+            {}
+        )  # (gly.name, fa.name, index) -> DAG + fatty acid
+
+        # list of fatty acids that can only react to either the ends or the middles
+        mid: List[FattyAcid] = []
+        end: List[FattyAcid] = []
+
+        for i in range(len(list_of_glycerides)):
+            tag = list_of_glycerides[i]
+            fa0, fa1, fa2 = tag.sn
+            if plucked[i] == "end":
+                dag0, _ = tag.remove_fatty_acid(index=0)  # G_None_FA_FA
+                dag2, _ = tag.remove_fatty_acid(index=2)  # G_FA_FA_None
+                unique_dags.add(dag0)
+                unique_dags.add(dag2)
+                dag_lookup[(tag.name, 0)] = (fa0.name, dag0)
+                dag_lookup[(tag.name, 2)] = (fa2.name, dag2)
+                # if the arrangement goes to the end or the middle (sorting)
+                if arranged[i] == "end":
+                    end.append(fa0)
+                    end.append(fa2)
+                else:
+                    mid.append(fa0)
+                    mid.append(fa2)
+            else:  # its mid
+                dag1, _ = tag.remove_fatty_acid(index=1)  # G_FA_None_FA
+                unique_dags.add(dag1)
+                dag_lookup[(tag.name, 1)] = (fa1.name, dag1)
+                if arranged[i] == "end":
+                    end.append(fa1)
+                else:
+                    mid.append(fa1)
+
+        unique_tgs = OrderedSet()
+        tg_lookup: Dict[Tuple[str, str], SymmetricGlyceride] = (
+            {}
+        )  # (dag.name, fa.name) -> TG
+
+        for dag in unique_dags:
+            if dag.sn[1] is None:
+                for fa in mid:
+                    # if the middle is empty
+                    tg1 = dag.add_fatty_acid(index=1, fatty_acid=fa)
+                    unique_tgs.add(tg1)
+                    tg_lookup[(dag.name, fa.name)] = tg1
+            else:
+                # or its not and so the ends must be empty
+                for fa in end:
+                    if dag.sn[0] is None:
+                        tg1 = dag.add_fatty_acid(index=0, fatty_acid=fa)
+                        unique_tgs.add(tg1)
+                        tg_lookup[(dag.name, fa.name)] = tg1
+                    elif dag.sn[2] is None:
+                        tg1 = dag.add_fatty_acid(index=2, fatty_acid=fa)
+                        unique_tgs.add(tg1)
+                        tg_lookup[(dag.name, fa.name)] = tg1
+                    else:
+                        raise ValueError("Unexpected diglyceride structure")
+
+        for i in range(len(list_of_glycerides)):
+            if plucked[i] == arranged[i]:
+                dag, fa = tag.remove_fatty_acid(index=1)
+                tg_lookup[(dag.name, fa.name)] = list_of_glycerides[i]
+            else:
+                dag0, fa0 = tag.remove_fatty_acid(index=0)
+                dag2, fa2 = tag.remove_fatty_acid(index=2)
+                tg_lookup[(dag0.name, fa0.name)] = list_of_glycerides[i]
+                tg_lookup[(dag2.name, fa2.name)] = list_of_glycerides[i]
 
         unique_species = list(OrderedSet.union(unique_dags, unique_tgs))
         midend = OrderedSet(mid + end)  # Combine the two lists together
-        init_tags = [init_tags.name for init_tags in list_of_stuff]
+        init_tags = [init_tags.name for init_tags in list_of_glycerides]
         fa_names = [fa.name for fa in midend]
         gly_names = [specie.name for specie in unique_species]
         species_names = [*fa_names, *OrderedSet(gly_names + init_tags)]
@@ -671,7 +889,7 @@ class ChemReactSim:
         ns = len(species_names)
 
         # build reaction names
-        for i, tag in enumerate(list_of_stuff):
+        for i, tag in enumerate(list_of_glycerides):
             plucked_value = plucked[i]
             if plucked_value == "end":
                 fa0, dag0 = dag_lookup[(tag.name, 0)]
@@ -748,7 +966,7 @@ class ChemReactSim:
 
         # Initial state vector
         init_state = np.zeros(len(species_names), dtype=float)
-        for gly, c0 in zip(list_of_stuff, initial_conc[0:]):
+        for gly, c0 in zip(list_of_glycerides, initial_conc[0:]):
             init_state[species_idx[gly.name]] = float(c0)
 
         # Convert list of column vectors into full (ns, nr) matrices
