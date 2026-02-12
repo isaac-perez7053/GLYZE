@@ -1,4 +1,4 @@
-from .chem_processor import ChemReactSim
+from .chem_processor import * 
 from .e_viscosity_model import EViscosityModel
 from .glyceride_mix import GlycerideMix
 from .glyceride import Glyceride, FattyAcid
@@ -8,7 +8,11 @@ from .slurm_file import SlurmFile
 from .slurm_header import SlurmHeader
 
 __all__ = [
-    "ChemReactSim",
+    "Deodorizer",
+    "DSC",
+    "Esterifier",
+    "Interesterifier",
+    "PKineticSim",
     "EViscosityModel",
     "GlycerideMix",
     "Glyceride",
