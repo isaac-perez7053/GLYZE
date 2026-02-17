@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 from typing import Dict, Mapping, List, Tuple, Union
-from glyze.glyceride import Glyceride
+from glyze.glyceride import Glyceride, FattyAcid
 import MDAnalysis as mda
 from glyze.packmol import PackmolSimulator
 import shutil
@@ -10,6 +10,10 @@ import hashlib, re
 from rdkit import Chem
 from rdkit.Geometry import Point3D
 from pathlib import Path
+from typing import TypeAlias
+import csv
+
+MixtureComponent: TypeAlias = "Glyceride | FattyAcid | str"
 
 RESNAME_FORBIDDEN = {
     "SOL",
@@ -85,46 +89,127 @@ def build_resname_map(glycerides_iter):
         mapping[g] = make_resname(base, taken)
     return mapping
 
+def _as_pairs(mix) -> List[Tuple[MixtureComponent, float]]:
+    """Accept dict-like or iterable of pairs."""
+    if hasattr(mix, "items"):
+        return [(k, float(v)) for k, v in mix.items()]
+    return [(k, float(v)) for (k, v) in mix]
+
+def _canonical_key(comp: MixtureComponent) -> str:
+    """
+    Produce a stable canonical identifier. Ensure things are standardized
+    """
+    if hasattr(comp, "canonical_id"):
+        return comp.canonical_id()
+    # fallback: class + repr (ok as a stopgap, but not ideal)
+    return f"{comp.__class__.__name__}:{repr(comp)}"
+
+def _canonical_component(comp: MixtureComponent) -> MixtureComponent:
+    """
+    Return a canonicalized object instance (e.g., sorted chains, standardized naming).
+    If you already ensure objects are canonical upon construction, this can just return comp.
+    """
+    if hasattr(comp, "canonicalize"):
+        return comp.canonicalize()
+    return comp
+
 
 class GlycerideMix:
-    """
-    Represents the composition of glycerides in a mixture.
-
-    Attributes
-    ----------
-    mix : Dict[Glyceride, float]
-        Mapping Glyceride objects to their quantities.
-    units : str
-        Units for the quantities (default "mole").
-    glyceride_list : List[Glyceride]
-        Glycerides in the same order as the input `mix` arg.
-    mol_list : List[Chem.Mol]
-        RDKit molecules created from each glyceride in `glyceride_list`;
-        built via `glyceride.glyceride_to_rdkit(optimize=True)`.
-    _mol_by_glyceride : Dict[Glyceride, Chem.Mol]
-        Convenience mapping: glyceride -> template mol.
-    """
-
-    def __init__(self, mix: List[Tuple[Glyceride, float]], units: str = "mole"):
-        # Dict mapping glyceride -> quantity
-        self.mix: Dict[Glyceride, float] = {g: qty for g, qty in mix}
+    def __init__(self, mix, units: str = "mole", *, sort: bool = True):
         self.units = units
 
-        # Ordered list reflecting the original mix argument
-        self.glyceride_list: List[Glyceride] = [g for g, _ in mix]
+        # Take in a dictionary or iterable pair to create a list of tuples
+        pairs = _as_pairs(mix)
+        merged_qty: Dict[str, float] = {}
+        rep_obj: Dict[str, MixtureComponent] = {}
 
-        # RDKit mols corresponding to glyceride_list
-        self.mol_list: List[Chem.Mol] = [
-            g.glyceride_to_rdkit(optimize=True) for g, _ in mix
-        ]
+        # Separate information to ensure information stays ordered
+        for comp, qty in pairs:
+            comp_c = _canonical_component(comp)
+            key = _canonical_key(comp_c)
+            merged_qty[key] = merged_qty.get(key, 0.0) + float(qty)
+            rep_obj.setdefault(key, comp_c)
 
-        # Map each glyceride to a single mol template
-        self._mol_by_glyceride: Dict[Glyceride, Chem.Mol] = {}
-        for g, mol in zip(self.glyceride_list, self.mol_list):
-            # first occurrence wins; avoids duplicating for same object
-            if g not in self._mol_by_glyceride:
-                self._mol_by_glyceride[g] = mol
 
+        keys = list(merged_qty.keys())
+        if sort:
+            keys.sort() 
+
+
+        self.components: List[MixtureComponent] = [rep_obj[k] for k in keys]
+        self.quantities: List[float] = [merged_qty[k] for k in keys]
+
+        # Build the mixture dictionary
+        self.mix: Dict[MixtureComponent, float] = {
+            rep_obj[k]: merged_qty[k] for k in keys
+        }
+
+        self.glyceride_list: List["Glyceride"] = []
+        self.fa_list: List["FattyAcid"] = []
+
+        self.glyceride_indices: List[int] = []
+        self.fa_indices: List[int] = []
+
+        for i, comp in enumerate(self.components):
+            if isinstance(comp, Glyceride):
+                self.glyceride_indices.append(i)
+                self.glyceride_list.append(comp)
+            elif isinstance(comp, FattyAcid):
+                self.fa_indices.append(i)
+                self.fa_list.append(comp)
+
+        self.mol_list: List[Chem.Mol] = [g.to_rdkit_mol(optimize=True) for g in self.glyceride_list]
+        self._mol_by_glyceride: Dict["Glyceride", Chem.Mol] = dict(zip(self.glyceride_list, self.mol_list))
+        self.index_by_key: Dict[str, int] = {k: i for i, k in enumerate(keys)}
+
+    @classmethod
+    def from_csv(cls, csv_path: str):
+        """
+        Create an instance of GlycerideMix using a csv file
+
+        Parameters:
+        -----------
+            csv_path (str): The path to the 
+
+        Returns: 
+        --------
+            GlycerideMix
+        """
+        data = []
+        try: 
+            # Open file
+            with open(csv_path, mode='r', newline='', encoding='utf-8') as f:
+                # DictReader uses the header row for keys
+                reader = csv.DictReader(f)
+                for row in reader: 
+                    values = list(row.values())
+                    # Extract H20 and Glycerol from the mix first if found
+                    if values[0]=='H2O' or values[0]=='Glycerol':
+                        data.append(((values[0], values[1]), values[2]))
+                    else:
+                        data.append((((Glyceride.from_name(values[0]) if values[0].startswith('G_')
+                                        else FattyAcid.from_name(values[0])), values[1]), values[2]))
+
+        except FileNotFoundError:
+            print(f"Error: The file {csv_path} was not found.")
+        mix = [x[0] for x in data]
+        return cls(mix, data[0][1])
+
+    @staticmethod
+    def _integer_counts_from_fractions(
+        fracs: Mapping[Glyceride, float], N: int
+    ) -> Dict[Glyceride, int]:
+        """Round fractional allocations to integers while preserving the total N."""
+        raw = {g: fracs[g] * N for g in fracs}
+        floors = {g: int(np.floor(raw[g])) for g in fracs}
+        deficit = N - sum(floors.values())
+        # Distribute remaining molecules to the largest fractional remainders
+        remainders = sorted(((raw[g] - floors[g], g) for g in fracs), reverse=True)
+        for i in range(deficit):
+            _, g = remainders[i]
+            floors[g] += 1
+        return floors
+    
     def _update_single_mol_from_pdb(
         self,
         mol: Chem.Mol,
@@ -182,6 +267,13 @@ class GlycerideMix:
 
         return mol
 
+    def qty_for(self, comp: MixtureComponent) -> float:
+        """Quantity lookup after canonicalization."""
+        comp_c = _canonical_component(comp)
+        key = _canonical_key(comp_c)
+        i = self.index_by_key[key]
+        return self.quantities[i]
+    
     def update_mols_from_pdbs(
         self,
         pdb_files: List[str | Path],
@@ -235,7 +327,7 @@ class GlycerideMix:
             self.mix[glyceride] = quantity
             # maintain ordered lists / mapping
             self.glyceride_list.append(glyceride)
-            mol = glyceride.glyceride_to_rdkit(optimize=True)
+            mol = glyceride.to_rdkit_mol(optimize=True)
             self.mol_list.append(mol)
             self._mol_by_glyceride[glyceride] = mol
 
@@ -321,7 +413,7 @@ class GlycerideMix:
             try:
                 mol = self._mol_by_glyceride[g]
             except KeyError:
-                mol = g.glyceride_to_rdkit(optimize=True)
+                mol = g.to_rdkit_mol(optimize=True)
                 self._mol_by_glyceride[g] = mol
 
             resname = resname_map[g]
@@ -450,21 +542,32 @@ class GlycerideMix:
                 "",
             ]
         return "\n".join(lines)
+    
+    def to_csv(self, output_path: str):
+        """
+        Create a csv containing the species names and concetrations
 
-    @staticmethod
-    def _integer_counts_from_fractions(
-        fracs: Mapping[Glyceride, float], N: int
-    ) -> Dict[Glyceride, int]:
-        """Round fractional allocations to integers while preserving the total N."""
-        raw = {g: fracs[g] * N for g in fracs}
-        floors = {g: int(np.floor(raw[g])) for g in fracs}
-        deficit = N - sum(floors.values())
-        # Distribute remaining molecules to the largest fractional remainders
-        remainders = sorted(((raw[g] - floors[g], g) for g in fracs), reverse=True)
-        for i in range(deficit):
-            _, g = remainders[i]
-            floors[g] += 1
-        return floors
+        Paramters:
+        ----------
+            output_path (str): The path to the written csv file
+
+        Returns: 
+        --------
+            None
+        """
+        # Create the headers of the csv file
+        headers = ['Species', 'Concentration', 'Units']
+
+        # Write into the csv file
+        with open (output_path, mode='w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+            # Make sure to print units
+            for key, value in self.mix.items():
+                row = [key.name if isinstance(key, (Glyceride, FattyAcid)) else key] + [value] + [self.units]
+                writer.writerow(row)
+        
+        print(f"CSV file {output_path} created successfully")
 
     @property
     def name(self) -> str:

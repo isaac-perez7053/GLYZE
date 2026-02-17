@@ -59,12 +59,12 @@ class GromacsViscosityAnalysis:
 
     The main entrypoint for viscosity is :meth:`analyze_pp_from_xvg`, which:
 
-    * reads a set of inverse-viscosity `.xvg` files (and optional temperature files),
-    * block-averages each time series to obtain mean 1/inv_eta and SEM,
-    * converts to viscosity eta in cP (with propagated SEM),
-    * fits a weighted linear model eta(L) = eta0 + m L,
-    * performs a leave-one-out (“dropout”) analysis for eta0, and
-    * runs a few sanity / QC checks (temperature stability, fit quality, etc.).
+    - reads a set of inverse-viscosity `.xvg` files (and optional temperature files),
+    - block-averages each time series to obtain mean 1/inv_eta and SEM,
+    - converts to viscosity eta in cP (with propagated SEM),
+    - fits a weighted linear model eta(L) = eta0 + m L,
+    - performs a leave-one-out (“dropout”) analysis for eta0, and
+    - runs a few sanity / QC checks (temperature stability, fit quality, etc.).
     """
 
     def analyze_pp_temperature_dir(
@@ -88,7 +88,7 @@ class GromacsViscosityAnalysis:
         max_dropout_delta_pct: float = 10.0,
     ) -> PPViscosityFitResult:
         """
-        nalyze PP viscosity runs under a given temperature directory.
+        Analyze PP viscosity runs under a given temperature directory.
 
         Parameters
         ----------

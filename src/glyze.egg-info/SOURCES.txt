@@ -3,7 +3,6 @@ README.md
 pyproject.toml
 src/glyze/__init__.py
 src/glyze/analysis.py
-src/glyze/chem_processor.py
 src/glyze/e_viscosity_model.py
 src/glyze/gamess.py
 src/glyze/gaussian.py
@@ -22,4 +21,17 @@ src/glyze.egg-info/dependency_links.txt
 src/glyze.egg-info/entry_points.txt
 src/glyze.egg-info/requires.txt
 src/glyze.egg-info/top_level.txt
+src/glyze/chem_processor/__init__.py
+src/glyze/chem_processor/chem_processor.py
+src/glyze/chem_processor/deodorizer.py
+src/glyze/chem_processor/dsc.py
+src/glyze/chem_processor/esterifier.py
+src/glyze/chem_processor/interesterifier.py
+src/glyze/chem_processor/p_kinetic_sim.py
 src/glyze/ui/ui.py
+tests/test_glyceride.py
+tests/test_glyceride_mix.py
+tests/test_glyceride_opls_pipeline.py
+tests/test_gmxapi.py
+tests/test_gmxapi_wrapper.py
+tests/test_multiwfn_cm5.py
