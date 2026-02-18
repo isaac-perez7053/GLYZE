@@ -48,11 +48,11 @@ class SimPaths:
         return self.workdir / "00_build"
 
     @property
-    def npt(self) -> Path:
+    def nvt(self) -> Path:
         return self.workdir / "10_eq_nvt"
 
     @property
-    def nvt(self) -> Path:
+    def npt(self) -> Path:
         return self.workdir / "20_eq_npt"
 
     @property
@@ -1024,6 +1024,13 @@ class GromacsSimulator:
         """
         Convenience wrapper: NPT (densify) -> NVT (thermalize).
         """
+        nvt_gro = self.run_nvt_equilibration(
+            T=T,
+            ns=nvt_ns,
+            tau_t=tau_t,
+            start_gro=npt_gro,
+            slurm=slurm,
+        )
         npt_gro = self.run_npt_equilibration(
             T=T,
             P=P,
@@ -1033,15 +1040,8 @@ class GromacsSimulator:
             maxwarn=maxwarn,
             slurm=slurm,
         )
-        nvt_gro = self.run_nvt_equilibration(
-            T=T,
-            ns=nvt_ns,
-            tau_t=tau_t,
-            start_gro=npt_gro,
-            slurm=slurm,
-        )
         top = self.paths.build / "system.top"
-        return {"npt_gro": npt_gro, "nvt_gro": nvt_gro, "top": top}
+        return {"nvt_gro": nvt_gro, "npt_gro": npt_gro, "top": top}
 
     def production(self, T: float, ns: float = 10.0, maxwarn: int = 6) -> Path:
         """

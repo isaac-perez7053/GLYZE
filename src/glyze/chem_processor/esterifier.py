@@ -7,21 +7,22 @@ from ordered_set import OrderedSet
 from glyze.utils import add_rxn
 from .p_kinetic_sim import PKineticSim
 
+
 class Esterifier:
 
-    @staticmethod 
+    @staticmethod
     def p_kinetic_esterification_rxn_list(
         list_of_fa: List[FattyAcid],
     ) -> List[str]:
         """
-        Return a list containing strings that each represent the 
+        Return a list containing strings that each represent the
         chemical reactions occurring in the esterification reaction
         shown above.
-        
+
         Parameters:
             list_of_fa (List[FattyAcid]): List of fatty acid objects.
-        
-        Returns: 
+
+        Returns:
             List[str]: List of chemical reaction equations
         """
         list_of_rxns = []
@@ -90,15 +91,6 @@ class Esterifier:
                 unique_tgs.add(tg1)
                 tg_lookup[(dag.name, fa.name)] = tg1
 
-        unique_species = list(OrderedSet.union(unique_mags, unique_dags, unique_tgs))
-        base_gly = "Glycerol"
-        H2O = "H2O"
-        fa_names = [fa.name for fa in list_of_fa]
-        gly_names = [specie.name for specie in unique_species]
-        species_names = [base_gly, H2O, *fa_names, *gly_names]
-        species_idx = {nm: i for i, nm in enumerate(species_names)}
-        ns = len(species_names)
-
         # Generate monoglycerides and rxn_names (reuse prebuilt MAGs)
         for fa in list_of_fa:
             mg_end = mag_lookup[("end", fa.name)].name
@@ -114,12 +106,12 @@ class Esterifier:
                     dg2 = dag_lookup[(mag.name, fa.name, 2)].name
                     list_of_rxns.append(f"{mag.name} + {fa.name} → {dg1} + H2O")
                     list_of_rxns.append(f"{mag.name} + {fa.name} → {dg2} + H2O")
-        
+
                 else:
                     dg1 = dag_lookup[(mag.name, fa.name, 0)].name
                     # two equivalent ends on MAG(mid)
                     list_of_rxns.append(f"Glyceride + {fa.name} → {dg1} + H2O")
-                    
+
         # Build TG reactions (reuse prebuilt TGs)
         for dag in unique_dags:
             for fa in list_of_fa:
@@ -133,7 +125,7 @@ class Esterifier:
     def p_kinetic_esterification(
         list_of_fa: List[FattyAcid],
         initial_conc: List[int],
-        k_calc: str = "permutation",
+        ks: List[float],
         chem_flag=False,
     ) -> PKineticSim:
         """
@@ -153,7 +145,13 @@ class Esterifier:
         react_stoic = []
         prod_stoic = []
         rxn_names: List[str] = []
-        ks = []
+        ks_internal = []
+
+        if ks is not None:
+            if len(ks) != len(
+                Esterifier.p_kinetic_esterification_rxn_list(list_of_fa=list_of_fa)
+            ):
+                raise ValueError("Make sure that you input the correct number of ks!")
         # First add glyceride and fatty acid species to the reactants
 
         if len(initial_conc) - 1 != len(list_of_fa):
@@ -242,22 +240,22 @@ class Esterifier:
                 react_stoic,
                 prod_stoic,
                 rxn_names,
-                ks,
+                ks_internal,
                 species_idx,
                 reactants=[base_gly, fa.name],
                 products=[mg_end, H2O],
-                k=2.0,
+                k=(ks.pop(0) if ks is not None else 2.0),
                 name=f"Glyceride + {fa.name} => {mg_end} + H2O",
             )
             add_rxn(
                 react_stoic,
                 prod_stoic,
                 rxn_names,
-                ks,
+                ks_internal,
                 species_idx,
                 reactants=[base_gly, fa.name],
                 products=[mg_mid, H2O],
-                k=1.0,
+                k=(ks.pop(0) if ks is not None else 1.0),
                 name=f"Glyceride + {fa.name} => {mg_mid} + H2O",
             )
 
@@ -271,22 +269,22 @@ class Esterifier:
                         react_stoic,
                         prod_stoic,
                         rxn_names,
-                        ks,
+                        ks_internal,
                         species_idx,
                         reactants=[mag.name, fa.name],
                         products=[dg1, H2O],
-                        k=1.0,
+                        k=(ks.pop(0) if ks is not None else 1.0),
                         name=f"{mag.name} + {fa.name} => {dg1} + H2O",
                     )
                     add_rxn(
                         react_stoic,
                         prod_stoic,
                         rxn_names,
-                        ks,
+                        ks_internal,
                         species_idx,
                         reactants=[mag.name, fa.name],
                         products=[dg2, H2O],
-                        k=1.0,
+                        k=(ks.pop(0) if ks is not None else 1.0),
                         name=f"{mag.name} + {fa.name} => {dg2} + H2O",
                     )
                 else:
@@ -296,11 +294,11 @@ class Esterifier:
                         react_stoic,
                         prod_stoic,
                         rxn_names,
-                        ks,
+                        ks_internal,
                         species_idx,
                         reactants=[mag.name, fa.name],
                         products=[dg1, H2O],
-                        k=2.0,
+                        k=(ks.pop(0) if ks is not None else 2.0),
                         name=f"Glyceride + {fa.name} => {dg1} + H2O",
                     )
 
@@ -314,11 +312,11 @@ class Esterifier:
                     react_stoic,
                     prod_stoic,
                     rxn_names,
-                    ks,
+                    ks_internal,
                     species_idx,
                     reactants=[dag.name, fa.name],
                     products=[tg1, H2O],
-                    k=1.0,
+                    k=(ks.pop(0) if ks is not None else 1.0),
                     name=f"{dag.name} + {fa.name} => {tg1} + H2O",
                 )
 
@@ -338,7 +336,7 @@ class Esterifier:
             np.hstack(prod_stoic) if len(prod_stoic) else np.zeros((ns, 0), dtype=float)
         )
 
-        ks = np.asarray(ks, dtype=float)
+        ks_internal = np.asarray(ks_internal, dtype=float)
 
         # # sanity checks
         # ns = len(species_names)
@@ -375,13 +373,12 @@ class Esterifier:
         # print(f"Printing rate constants: {ks}")
         # print(f"Printing shape of reactant stoichiometry: {react_stoic.shape}")
 
-
         return PKineticSim(
             species_names=species_names,
             react_stoic=react_stoic,
             prod_stoic=prod_stoic,
             init_state=init_state,
-            k_det=ks,
+            k_det=ks_internal,
             rxn_names=rxn_names,
             chem_flag=chem_flag,
         )

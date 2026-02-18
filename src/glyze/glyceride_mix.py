@@ -10,10 +10,8 @@ import hashlib, re
 from rdkit import Chem
 from rdkit.Geometry import Point3D
 from pathlib import Path
-from typing import TypeAlias
 import csv
 
-MixtureComponent: TypeAlias = "Glyceride | FattyAcid | str"
 
 RESNAME_FORBIDDEN = {
     "SOL",
@@ -89,11 +87,13 @@ def build_resname_map(glycerides_iter):
         mapping[g] = make_resname(base, taken)
     return mapping
 
+
 def _as_pairs(mix) -> List[Tuple[MixtureComponent, float]]:
     """Accept dict-like or iterable of pairs."""
     if hasattr(mix, "items"):
         return [(k, float(v)) for k, v in mix.items()]
     return [(k, float(v)) for (k, v) in mix]
+
 
 def _canonical_key(comp: MixtureComponent) -> str:
     """
@@ -104,6 +104,7 @@ def _canonical_key(comp: MixtureComponent) -> str:
     # fallback: class + repr (ok as a stopgap, but not ideal)
     return f"{comp.__class__.__name__}:{repr(comp)}"
 
+
 def _canonical_component(comp: MixtureComponent) -> MixtureComponent:
     """
     Return a canonicalized object instance (e.g., sorted chains, standardized naming).
@@ -112,6 +113,67 @@ def _canonical_component(comp: MixtureComponent) -> MixtureComponent:
     if hasattr(comp, "canonicalize"):
         return comp.canonicalize()
     return comp
+
+def water_vapor_pressure(T: float, P: float=1.0):
+    """
+    Calculate water vapor pressure in mmHg using Antoine equation.
+    T is temperature in Celsius.
+    P is pressure in atm (default 1.0 atm).
+    """
+    # Antoine constants for water (from NIST)
+    A, B, C = 8.07131, 1730.63, 233.426
+    # Calculate vapor pressure in mmHg
+    log_p = A - B / (T + C)
+    p_mmHg = 10 ** log_p
+    # Convert to atm if needed
+    return p_mmHg / 760.0 if P == 1.0 else p_mmHg
+
+def glycerol_vapor_pressure(T: float, P:float=1.0):
+    """
+    Calculate glycerol vapor pressure in mmHg using Antoine equation.
+    T is temperature in Celsius.
+    P is pressure in atm (default 1.0 atm).
+    """
+    # Antoine constants for glycerol (from NIST)
+    A, B, C = 7.28542, 1385.03, 220.79
+    # Calculate vapor pressure in mmHg
+    log_p = A - B / (T + C)
+    p_mmHg = 10 ** log_p
+    # Convert to atm if needed
+    return p_mmHg / 760.0 if P == 1.0 else p_mmHg
+
+class MixtureComponent: 
+    """"""
+
+    def __init__(self, component):
+        self.component = component
+
+    @classmethod 
+    def from_string(cls, string: str): 
+        """"""
+        if string.startswith("G_"):
+            return cls(Glyceride.from_name(string))
+        elif string.startswith("N"):
+            return cls(FattyAcid.from_name(string))
+        elif string == 'H2O' or string == 'Glycerol':
+            return cls(string)
+        else:
+            raise TypeError(f"Please enter a valid component name (e.g., G_XXX, NXXX, H2O, Glycerol)")
+        
+    def vapor_pressure(self, T: float, P: float = 1.0):
+        if hasattr(self.component, "vapor_pressure"):
+            return self.component.vapor_pressure(T, P)
+        elif self.component == "H2O":
+            return water_vapor_pressure(T, P)
+        else:
+            return glycerol_vapor_pressure(T, P)
+        
+    @property
+    def name(self):
+        if hasattr(self.component, "name"):
+            return self.component.name
+        return str(self.component)
+
 
 
 class GlycerideMix:
@@ -130,11 +192,9 @@ class GlycerideMix:
             merged_qty[key] = merged_qty.get(key, 0.0) + float(qty)
             rep_obj.setdefault(key, comp_c)
 
-
         keys = list(merged_qty.keys())
         if sort:
-            keys.sort() 
-
+            keys.sort()
 
         self.components: List[MixtureComponent] = [rep_obj[k] for k in keys]
         self.quantities: List[float] = [merged_qty[k] for k in keys]
@@ -158,8 +218,12 @@ class GlycerideMix:
                 self.fa_indices.append(i)
                 self.fa_list.append(comp)
 
-        self.mol_list: List[Chem.Mol] = [g.to_rdkit_mol(optimize=True) for g in self.glyceride_list]
-        self._mol_by_glyceride: Dict["Glyceride", Chem.Mol] = dict(zip(self.glyceride_list, self.mol_list))
+        self.mol_list: List[Chem.Mol] = [
+            g.to_rdkit_mol(optimize=True) for g in self.glyceride_list
+        ]
+        self._mol_by_glyceride: Dict["Glyceride", Chem.Mol] = dict(
+            zip(self.glyceride_list, self.mol_list)
+        )
         self.index_by_key: Dict[str, int] = {k: i for i, k in enumerate(keys)}
 
     @classmethod
@@ -169,31 +233,71 @@ class GlycerideMix:
 
         Parameters:
         -----------
-            csv_path (str): The path to the 
+            csv_path (str): The path to the
 
-        Returns: 
+        Returns:
         --------
             GlycerideMix
         """
         data = []
-        try: 
+        try:
             # Open file
-            with open(csv_path, mode='r', newline='', encoding='utf-8') as f:
+            with open(csv_path, mode="r", newline="", encoding="utf-8") as f:
                 # DictReader uses the header row for keys
                 reader = csv.DictReader(f)
-                for row in reader: 
+                for row in reader:
                     values = list(row.values())
                     # Extract H20 and Glycerol from the mix first if found
-                    if values[0]=='H2O' or values[0]=='Glycerol':
+                    if values[0] == "H2O" or values[0] == "Glycerol":
                         data.append(((values[0], values[1]), values[2]))
                     else:
-                        data.append((((Glyceride.from_name(values[0]) if values[0].startswith('G_')
-                                        else FattyAcid.from_name(values[0])), values[1]), values[2]))
+                        data.append(
+                            (
+                                (
+                                    (
+                                        Glyceride.from_name(values[0])
+                                        if values[0].startswith("G_")
+                                        else FattyAcid.from_name(values[0])
+                                    ),
+                                    values[1],
+                                ),
+                                values[2],
+                            )
+                        )
 
         except FileNotFoundError:
             print(f"Error: The file {csv_path} was not found.")
         mix = [x[0] for x in data]
         return cls(mix, data[0][1])
+
+    def change_qty(self, component: MixtureComponent, new_quantity: float):
+        """
+        Change the quantity of a component in the mixture.
+        
+        """
+        comp_c = _canonical_component(component)
+        key = _canonical_key(comp_c)
+        if key not in self.index_by_key:
+            raise ValueError(f"Component {component} not in mixture")
+        i = self.index_by_key[key]
+        self.quantities[i] = new_quantity
+
+    def add_species(self, species_conc: Tuple[MixtureComponent, float]):
+        """
+        Add a new species to the mixture.
+
+        Parameters:
+        -----------
+            species_conc (Tuple[MixtureComponent, float]): The component and its quantity to be added.
+        """
+        component, quantity = species_conc
+        comp_c = _canonical_component(component)
+        key = _canonical_key(comp_c)
+        if key in self.index_by_key:
+            raise ValueError(f"Component {component} already in mixture")
+        self.components.append(component)
+        self.quantities.append(quantity)
+        self.index_by_key[key] = len(self.components) - 1
 
     @staticmethod
     def _integer_counts_from_fractions(
@@ -209,7 +313,7 @@ class GlycerideMix:
             _, g = remainders[i]
             floors[g] += 1
         return floors
-    
+
     def _update_single_mol_from_pdb(
         self,
         mol: Chem.Mol,
@@ -273,7 +377,7 @@ class GlycerideMix:
         key = _canonical_key(comp_c)
         i = self.index_by_key[key]
         return self.quantities[i]
-    
+
     def update_mols_from_pdbs(
         self,
         pdb_files: List[str | Path],
@@ -316,20 +420,6 @@ class GlycerideMix:
             self.mol_list[i] = updated
             self._mol_by_glyceride[g] = updated
 
-    def add(self, glyceride: Glyceride, quantity: float):
-        """
-        Add a glyceride and its quantity to the composition.
-        Also ensures we have a corresponding Chem.Mol template stored.
-        """
-        if glyceride in self.mix:
-            self.mix[glyceride] += quantity
-        else:
-            self.mix[glyceride] = quantity
-            # maintain ordered lists / mapping
-            self.glyceride_list.append(glyceride)
-            mol = glyceride.to_rdkit_mol(optimize=True)
-            self.mol_list.append(mol)
-            self._mol_by_glyceride[glyceride] = mol
 
     def total_quantity(self) -> float:
         """Calculate the total quantity of all glycerides in the mix."""
@@ -542,7 +632,7 @@ class GlycerideMix:
                 "",
             ]
         return "\n".join(lines)
-    
+
     def to_csv(self, output_path: str):
         """
         Create a csv containing the species names and concetrations
@@ -551,22 +641,26 @@ class GlycerideMix:
         ----------
             output_path (str): The path to the written csv file
 
-        Returns: 
+        Returns:
         --------
             None
         """
         # Create the headers of the csv file
-        headers = ['Species', 'Concentration', 'Units']
+        headers = ["Species", "Concentration", "Units"]
 
         # Write into the csv file
-        with open (output_path, mode='w', newline='') as f:
+        with open(output_path, mode="w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(headers)
             # Make sure to print units
             for key, value in self.mix.items():
-                row = [key.name if isinstance(key, (Glyceride, FattyAcid)) else key] + [value] + [self.units]
+                row = (
+                    [key.name if isinstance(key, (Glyceride, FattyAcid)) else key]
+                    + [value]
+                    + [self.units]
+                )
                 writer.writerow(row)
-        
+
         print(f"CSV file {output_path} created successfully")
 
     @property

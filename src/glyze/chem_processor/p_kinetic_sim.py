@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import numpy as np
-from typing import  Tuple
+from typing import Tuple
 from glyze.glyceride import Glyceride, FattyAcid, FattyAcid
 from glyze.glyceride_mix import GlycerideMix
 from dataclasses import dataclass
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
+import csv
 
 # TODO: Implement custom k-list and list reactions
 AVOGADRO = 6.02214076e23
@@ -37,7 +38,7 @@ class PKineticSim:
     k_det: np.ndarray  # (nr,)
     rxn_names: list
     chem_flag: bool
-    overall_order: float | None = None  
+    overall_order: float | None = None
 
     def S(self) -> np.ndarray:
         return self.prod_stoic - self.react_stoic
@@ -204,29 +205,163 @@ class PKineticSim:
         pio.renderers.default = "browser"
         fig.show()
 
+    def to_csv(self, output_path: str):
+        """
+        Create a csv dumping the results of the simulation.
+
+        Paramters:
+        ----------
+            output_path (str): The path to the written csv file
+
+        Returns:
+        --------
+            None
+        """
+        # Create the headers of the csv file
+        headers = [
+            "Species",
+            "Initial Concentration",
+            "Final Concentration",
+            "Initial Mass (g)",
+            "Final Mass (g)",
+            "Mass Fraction",
+            "Carbon Number",
+        ]
+
+        # Basic preconditions
+        if not hasattr(self, "sol"):
+            raise ValueError(
+                "No solution available. Run `solve` before exporting to CSV."
+            )
+        if not hasattr(self, "species_names"):
+            raise ValueError("`species_names` not set on simulator.")
+        if not hasattr(self, "init_state"):
+            raise ValueError("`init_state` not set on simulator.")
+
+        ns = len(self.species_names)
+        if len(self.init_state) != ns:
+            raise ValueError("Length of `init_state` does not match number of species")
+        if self.sol.y.shape[0] != ns:
+            raise ValueError("Solution shape does not match number of species")
+
+        initial_moles = list(self.init_state)
+        final_moles = [float(x) for x in self.sol.y[:, -1]]
+
+        # compute masses and carbon numbers
+        rows = []
+        total_final_mass = 0.0
+        for i, name in enumerate(self.species_names):
+            molar_mass = None
+            carbon_number = ""
+
+            # handle special species
+            lname = str(name).lower()
+            if lname in ("glycerol",):
+                molar_mass = 92.094
+                carbon_number = 3
+                display_name = "Glycerol"
+            elif lname in ("h2o", "water"):
+                molar_mass = 18.01528
+                carbon_number = 0
+                display_name = "H2O"
+            else:
+                # decide whether glyceride or fatty acid by name pattern
+                try:
+                    if str(name).count("_") == 3:
+                        obj = Glyceride.from_name(name)
+                    else:
+                        obj = FattyAcid.from_name(name)
+                except Exception:
+                    obj = None
+
+                if obj is not None:
+                    molar_mass = obj.molar_mass
+                    carbon_number = obj.num_carbons
+                    display_name = obj.name
+                else:
+                    display_name = name
+
+            imoles = float(initial_moles[i])
+            fmoles = float(final_moles[i])
+            imass = imoles * molar_mass if molar_mass is not None else ""
+            fmass = fmoles * molar_mass if molar_mass is not None else ""
+
+            if isinstance(fmass, (int, float)):
+                total_final_mass += fmass
+
+            rows.append(
+                {
+                    "Species": display_name,
+                    "Initial Concentration": imoles,
+                    "Final Concentration": fmoles,
+                    "Initial Mass (g)": imass,
+                    "Final Mass (g)": fmass,
+                    "Mass Fraction": 0.0,  # placeholder, fill later
+                    "Carbon Number": carbon_number,
+                }
+            )
+
+        # compute mass fractions
+        for r in rows:
+            fmass = r["Final Mass (g)"]
+            if isinstance(fmass, (int, float)) and total_final_mass > 0:
+                r["Mass Fraction"] = fmass / total_final_mass
+            else:
+                r["Mass Fraction"] = 0.0
+
+        # write CSV
+        with open(output_path, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+            for r in rows:
+                writer.writerow(
+                    [
+                        r["Species"],
+                        r["Initial Concentration"],
+                        r["Final Concentration"],
+                        r["Initial Mass (g)"],
+                        r["Final Mass (g)"],
+                        r["Mass Fraction"],
+                        r["Carbon Number"],
+                    ]
+                )
+
     @property
     def glyceride_mix(self):
         """
-        Glyceride mixture output 
+        Glyceride mixture output
         """
-        if hasattr(self, 'sol'):
-            if hasattr(self, 'species_names'):
-                list_of_gly = [Glyceride.from_name(x) if x.count('_') == 3 else FattyAcid.from_name(x) for x in self.species_names[1:] if x not in ('H2O', 'Glycerol')]
-                # Grab the final concentration of every species and create a list of them that 
+        if hasattr(self, "sol"):
+            if hasattr(self, "species_names"):
+                list_of_gly = [
+                    (
+                        Glyceride.from_name(x)
+                        if x.count("_") == 3
+                        else FattyAcid.from_name(x)
+                    )
+                    for x in self.species_names[1:]
+                    if x not in ("H2O", "Glycerol")
+                ]
+                # Grab the final concentration of every species and create a list of them that
                 # correspond to the list of glycerides
-                
+
                 # Cut off glycerol and H2O to match list_of_gly
-                list_of_conc = [x[-1] for i, x in enumerate(self.sol.y[1:], 1) if self.species_names[i] not in ('H2O', 'Glycerol')]
+                list_of_conc = [
+                    x[-1]
+                    for i, x in enumerate(self.sol.y[1:], 1)
+                    if self.species_names[i] not in ("H2O", "Glycerol")
+                ]
 
                 # Append together glycerol and water
-                list_of_components = ['Glycerol', 'H2O']
+                list_of_components = ["Glycerol", "H2O"]
                 list_of_all_conc = [self.sol.y[0][-1], self.sol.y[1][-1]]
                 list_of_components += list_of_gly
                 list_of_all_conc += list_of_conc
 
-
-                return GlycerideMix(mix=[x for x in zip(list_of_components, list_of_all_conc)])
-            else: 
+                return GlycerideMix(
+                    mix=[x for x in zip(list_of_components, list_of_all_conc)]
+                )
+            else:
                 raise ValueError("Please define the name of the species")
-        else: 
+        else:
             raise ValueError("Please run the solver before grabbing the results")

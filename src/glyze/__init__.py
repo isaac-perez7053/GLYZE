@@ -1,4 +1,4 @@
-from .chem_processor import * 
+from .chem_processor import *
 from .e_viscosity_model import EViscosityModel
 from .glyceride_mix import GlycerideMix
 from .glyceride import Glyceride, FattyAcid

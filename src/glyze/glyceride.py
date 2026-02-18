@@ -6,7 +6,8 @@ from rdkit.Chem import AllChem
 import copy
 from pathlib import Path
 
-GLYCEROL_MOL_MASS = 92.09382 # g/mol for C3H8O3
+GLYCEROL_MOL_MASS = 92.09382  # g/mol for C3H8O3
+
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
     """Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields."""
@@ -113,7 +114,8 @@ def _fa_key(fa: Optional[FattyAcid]) -> tuple:
         tuple(fac.branches),  # Sorted branches (pos, label)
     )
 
-#TODO: Fix the docstrings in the Glyceride and FattyAcid class
+
+# TODO: Fix the docstrings in the Glyceride and FattyAcid class
 @dataclass(frozen=True)
 class FattyAcid:
     """
@@ -144,14 +146,14 @@ class FattyAcid:
                 raise ValueError(
                     f"double-bond position delta{k} out of range for C{self.length}"
                 )
-        
+
         # Check that the branches input is of the right format
         for pos, _label in self.branches:
             if not (1 <= pos <= self.length):
                 raise ValueError(
                     f"branch position C{pos} out of range for C{self.length}"
                 )
-            #TODO: Ensure the branch is valid 
+            # TODO: Ensure the branch is valid
 
     @classmethod
     def from_name(cls, fa_str: str) -> Optional[FattyAcid]:
@@ -162,12 +164,12 @@ class FattyAcid:
         # Empty case
         if fa_str == "EMPTY":
             return None
-        
+
         # Ensure the string has the right beginning format
         if not fa_str.startswith("N"):
             raise ValueError(f"Invalid fatty acid format: {fa_str}")
-        
-        # Grab the length 
+
+        # Grab the length
         length = int(fa_str[1:3])
 
         # Grab the double bond count
@@ -203,7 +205,7 @@ class FattyAcid:
                     else:
                         db_stereo.append("Z")  # Default to Z if not specified
 
-            # Parse branches 
+            # Parse branches
             elif fa_str[i] == "M":
                 i += 1
                 while i + 1 < len(fa_str) and fa_str[i : i + 2].isdigit():
@@ -225,16 +227,14 @@ class FattyAcid:
             raise ValueError(
                 f"Number of double bonds does not match positions in: {fa_str}"
             )
-        return FattyAcid(
-            length, tuple(db_positions), tuple(db_stereo), tuple(branches)
-        )
-
+        return FattyAcid(length, tuple(db_positions), tuple(db_stereo), tuple(branches))
 
     def canonical(self) -> "FattyAcid":
         """
         Returns a canonical (normalized) version of the fatty acid. Ensures that
         object signature is identical for equivalent fatty acids.
         """
+
         def norm_st(s: str) -> str:
             s = s.strip().lower()
             return {"cis": "z", "trans": "e"}.get(s, s.upper())  # supports "Z"/"E"
@@ -249,7 +249,7 @@ class FattyAcid:
         else:
             stereo = tuple()
 
-        # Ensure branches are also sorted 
+        # Ensure branches are also sorted
         branches = tuple(sorted((int(p), str(lbl)) for p, lbl in self.branches))
         return FattyAcid(self.length, positions, stereo, branches)
 
@@ -263,7 +263,7 @@ class FattyAcid:
         rw = Chem.RWMol()
 
         # add the carboxyl group
-        carboxyl = rw.AddAtom(Chem.Atom(6)) #the atoms
+        carboxyl = rw.AddAtom(Chem.Atom(6))  # the atoms
         o_double = rw.AddAtom(Chem.Atom(8))
         o_single = rw.AddAtom(Chem.Atom(8))
 
@@ -272,7 +272,7 @@ class FattyAcid:
 
         # Build the rest of the chain (C1...Cn)
         chain_idx = []
-        last = carboxyl #adds to the chain
+        last = carboxyl  # adds to the chain
         for i in range(2, self.length + 1):
             ci = rw.AddAtom(Chem.Atom(6))
             chain_idx.append(ci)
@@ -306,8 +306,9 @@ class FattyAcid:
                 for nbr in rw.GetAtomWithIdx(a).GetNeighbors()
                 if nbr.GetIdx() != b
             ]
-            b_neighbors = [nbr.GetIdx()
-                for nbr in rw.GetAtomWithIdx(b).GetNeighbors() 
+            b_neighbors = [
+                nbr.GetIdx()
+                for nbr in rw.GetAtomWithIdx(b).GetNeighbors()
                 if nbr.GetIdx() != a
             ]
             if a_neighbors and b_neighbors:
@@ -339,7 +340,7 @@ class FattyAcid:
 
         return mass
 
-    @property 
+    @property
     def num_carbons(self) -> int:
         """Return the number of carbons in the fatty acid"""
         return self.length
@@ -368,7 +369,6 @@ class FattyAcid:
         for bpos, _ in self.branches:
             parts.append(f"M{bpos:02d}")  # Only 'Me' supported now
         return "".join(parts)
-    
 
 
 class Glyceride:
@@ -420,17 +420,17 @@ class Glyceride:
         # Make sure the input string has the right format (roughly)
         if not name.startswith("G_"):
             raise ValueError(f"Invalid glyceride format: {name}")
-        
-        # Split up the string into its fatty acids. 
+
+        # Split up the string into its fatty acids.
         parts = name[2:].split("_")
         if len(parts) != 3:
             raise ValueError(f"Glyceride must have three fatty acids: {name}")
-        
+
         # Create instances of the fatty acids
         fa1 = FattyAcid.from_name(parts[0])
         fa2 = FattyAcid.from_name(parts[1])
         fa3 = FattyAcid.from_name(parts[2])
-        
+
         # Create an instance of the Glyceride class
         return cls((fa1, fa2, fa3))
 
@@ -558,7 +558,9 @@ class Glyceride:
         Returns:
             Chem.Mol: The RDKit molecule with 3D coordinates.
         """
-        rw, sn_os, _ = self._build_glycerol_backbone()  # the chem mol func and the indices of the backbone
+        rw, sn_os, _ = (
+            self._build_glycerol_backbone()
+        )  # the chem mol func and the indices of the backbone
         for idx, fa in enumerate(self.sn):
             if fa is None:
                 continue
@@ -771,8 +773,8 @@ class Glyceride:
     def num_fatty_acids(self) -> int:
         """Number of fatty acid chains (1, 2, or 3)."""
         return sum(1 for fa in self.sn if fa is not None)
-    
-    @property 
+
+    @property
     def num_carbons(self) -> int:
         """Return the number of carbons in the glyceride molecule"""
         # Add 3 for the glycerol molecule

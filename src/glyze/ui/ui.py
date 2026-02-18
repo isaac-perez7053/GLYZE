@@ -197,7 +197,9 @@ def main():
 
     st.title("GLYZE - Glyceride and Lipid sYnthetiZation Engine")
 
-    tab_builder, tab_chem, tab_visc = st.tabs(["Builder", "ChemProcessor / simulations", "Viscosity Empirical Model"])
+    tab_builder, tab_chem, tab_visc = st.tabs(
+        ["Builder", "ChemProcessor / simulations", "Viscosity Empirical Model"]
+    )
 
     with tab_builder:
         st.sidebar.header("Fatty Acid Builder")
@@ -476,7 +478,7 @@ def main():
 
                 st.markdown("### 3D structure")
                 try:
-                    mol = selected_gly.glyceride_to_rdkit(optimize=True)
+                    mol = selected_gly.to_rdkit_mol(optimize=True)
                     fig = rdkit_mol_to_plotly_3d(mol)
                     st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
@@ -586,20 +588,19 @@ def main():
                 st.success("Interesterification simulation completed.")
             except Exception as e:
                 st.error(f"Error running ChemProcessor: {e}")
-    
-    
+
     with tab_visc:
         st.subheader("Viscosity vs Temperature - Mixture Widget")
 
         # Empirical coefficients (from MATLAB)
         COEFS = {
-            "C2":  (0.07, 105.2911, 0.0112, -885.4359),
-            "C3":  (-4.056, 967.9563, 134.5872, 31.4778),
-            "C4":  (-0.384050317, 122.5512048, -6.489359596, -2543.72728),
-            "C6":  (-0.4725, 156.0213, -7.1172, -3537.5806),
-            "C7":  (0.0084, 127.5008, -6.3182, -2561.4509),
-            "C8":  (0.1859, 129.532, -6.0275, -2510.8992),
-            "C9":  (0.0493, 149.653, -6.5789, -3139.137),
+            "C2": (0.07, 105.2911, 0.0112, -885.4359),
+            "C3": (-4.056, 967.9563, 134.5872, 31.4778),
+            "C4": (-0.384050317, 122.5512048, -6.489359596, -2543.72728),
+            "C6": (-0.4725, 156.0213, -7.1172, -3537.5806),
+            "C7": (0.0084, 127.5008, -6.3182, -2561.4509),
+            "C8": (0.1859, 129.532, -6.0275, -2510.8992),
+            "C9": (0.0493, 149.653, -6.5789, -3139.137),
             "C10": (0.3359649655, 143.6640376, -6.245550956, -2870.995961),
             "C11": (-0.6474906112, 250.18623, -9.343606644, -7309.246012),
             "C12": (-0.7105139749, 273.087563, -9.038660766, -7891.211795),
@@ -613,10 +614,24 @@ def main():
         }
 
         MOLAR_MASS = {
-            "C2": 218.18, "C3": 260.28, "C4": 302.367, "C5": 344.448, "C6": 386.529,
-            "C7": 428.61, "C8": 470.691, "C9": 512.772, "C10": 554.853, "C11": 596.934,
-            "C12": 639.015, "C13": 681.096, "C14": 723.177, "C15": 765.258, "C16": 807.339,
-            "C17": 849.42, "C18": 891.501, "C19": 933.582
+            "C2": 218.18,
+            "C3": 260.28,
+            "C4": 302.367,
+            "C5": 344.448,
+            "C6": 386.529,
+            "C7": 428.61,
+            "C8": 470.691,
+            "C9": 512.772,
+            "C10": 554.853,
+            "C11": 596.934,
+            "C12": 639.015,
+            "C13": 681.096,
+            "C14": 723.177,
+            "C15": 765.258,
+            "C16": 807.339,
+            "C17": 849.42,
+            "C18": 891.501,
+            "C19": 933.582,
         }
 
         def tags_from(s: str):
@@ -624,7 +639,11 @@ def main():
 
         def floats_from(s: str):
             vals = [x for x in re.split(r"[,\s]+", (s or "").strip()) if x]
-            return np.array([float(x) for x in vals], dtype=float) if vals else np.array([], dtype=float)
+            return (
+                np.array([float(x) for x in vals], dtype=float)
+                if vals
+                else np.array([], dtype=float)
+            )
 
         def range_for(tag: str):
             n = int(tag[1:])
@@ -664,9 +683,13 @@ def main():
 
         tags_str = st.text_input("TAGS to mix (e.g., C3 C4 C6)", value=default_tags)
         mf_str = st.text_input("Mass fractions (same order as TAGS)", value=default_mf)
-        tr_str = st.text_input("Temperature range °C: start end [step] (e.g., 60 70 1)", value=default_tr)
+        tr_str = st.text_input(
+            "Temperature range °C: start end [step] (e.g., 60 70 1)", value=default_tr
+        )
 
-        auto_run = st.toggle("Auto-run when inputs are valid (press Enter after typing)", value=True)
+        auto_run = st.toggle(
+            "Auto-run when inputs are valid (press Enter after typing)", value=True
+        )
         run_clicked = st.button("Run / Recompute", type="primary", disabled=auto_run)
 
         def validate_and_compute(tags_str_in: str, mf_str_in: str, tr_str_in: str):
@@ -683,7 +706,10 @@ def main():
                 return None, f"Alert: expected {len(tags)} mass-fraction values."
 
             if np.any(mf < 0) or np.isclose(mf.sum(), 0.0):
-                return None, "Alert: mass fractions must be nonnegative and not all zero."
+                return (
+                    None,
+                    "Alert: mass fractions must be nonnegative and not all zero.",
+                )
 
             tr = floats_from(tr_str_in)
             if tr.size not in (2, 3):
@@ -743,13 +769,15 @@ def main():
                     st.pyplot(fig, use_container_width=True, clear_figure=True)
 
                 csv = (
-                    "T_C," + ",".join(tags) + ",Mixture\n" +
-                    "\n".join(
+                    "T_C,"
+                    + ",".join(tags)
+                    + ",Mixture\n"
+                    + "\n".join(
                         [
                             ",".join(
-                                [f"{T[i]:g}"] +
-                                [f"{U[j, i]:.8g}" for j in range(len(tags))] +
-                                [f"{u_mix[i]:.8g}"]
+                                [f"{T[i]:g}"]
+                                + [f"{U[j, i]:.8g}" for j in range(len(tags))]
+                                + [f"{u_mix[i]:.8g}"]
                             )
                             for i in range(len(T))
                         ]
@@ -763,7 +791,10 @@ def main():
                     mime="text/csv",
                 )
         else:
-            st.info("Edit inputs and press Enter (or toggle Auto-run), then run the calculation.")
+            st.info(
+                "Edit inputs and press Enter (or toggle Auto-run), then run the calculation."
+            )
+
 
 if __name__ == "__main__":
     main()

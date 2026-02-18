@@ -10,6 +10,7 @@ from glyze.utils import add_rxn
 AVOGADRO = 6.02214076e23
 CM3_PER_A3 = 1e-24
 
+
 class Interesterifier:
 
     @staticmethod
@@ -25,12 +26,12 @@ class Interesterifier:
         Parameters:
             list_of_glycerides (List[Glyceride]): List of the MAGs, DAGs, TAGs present in the reaction
             plucked (List[str]):
-            arranged (List[str]): 
+            arranged (List[str]):
 
-        Returns: 
+        Returns:
             List[str]: A list of chemical reaction equations present in the simulation
         """
-            # Build all unique species once, and REUSE them when building reactions
+        # Build all unique species once, and REUSE them when building reactions
         unique_dags = OrderedSet()
         dag_lookup: Dict[Tuple[str, int], Tuple[str, SymmetricGlyceride]] = (
             {}
@@ -133,7 +134,7 @@ class Interesterifier:
         initial_conc: List[int],
         plucked: List[str],
         arranged: List[str],
-        k_calc: str = "permutation",
+        ks: List[float],
         chem_flag=False,
     ) -> PKineticSim:
         """
@@ -151,9 +152,17 @@ class Interesterifier:
         react_stoic = []
         prod_stoic = []
         rxn_names: List[str] = []
-        ks = []
+        ks_internal = []
 
         # First break TAGs and form DAGs and FAs
+
+        if ks is not None:
+            if len(ks) != len(
+                Interesterifier.p_kinetic_intersterification_rxn_list(
+                    list_of_glycerides, arranged, plucked
+                )
+            ):
+                raise ValueError("Make sure that you input the correct number of ks!")
 
         if len(initial_conc) != len(list_of_glycerides):
             raise ValueError("initial_conc must have the same length as list_of_fa")
@@ -252,22 +261,22 @@ class Interesterifier:
                     react_stoic,
                     prod_stoic,
                     rxn_names,
-                    ks,
+                    ks_internal,
                     species_idx,
                     reactants=[tag.name],
                     products=[dag0, fa0],
-                    k=1.0,
+                    k=(ks.pop(0) if ks is not None else 1.0),
                     name=f"{tag.name} => {dag0} + {fa0}",
                 )
                 add_rxn(
                     react_stoic,
                     prod_stoic,
                     rxn_names,
-                    ks,
+                    ks_internal,
                     species_idx,
                     reactants=[tag.name],
                     products=[dag2, fa2],
-                    k=1.0,
+                    k=(ks.pop(0) if ks is not None else 1.0),
                     name=f"{tag.name} => {dag2} + {fa2}",
                 )
             else:
@@ -277,11 +286,11 @@ class Interesterifier:
                     react_stoic,
                     prod_stoic,
                     rxn_names,
-                    ks,
+                    ks_internal,
                     species_idx,
                     reactants=[tag.name],
                     products=[dag1, fa1],
-                    k=1.0,
+                    k=(ks.pop(0) if ks is not None else 1.0),
                     name=f"{tag.name} => {dag1} + {fa1}",
                 )
 
@@ -294,11 +303,11 @@ class Interesterifier:
                         react_stoic,
                         prod_stoic,
                         rxn_names,
-                        ks,
+                        ks_internal,
                         species_idx,
                         reactants=[dag.name, fa.name],
                         products=[tg1],
-                        k=2.0,
+                        k=(ks.pop(0) if ks is not None else 2.0),
                         name=f"{dag.name} + {fa.name} => {tg1}",
                     )
             else:
@@ -308,11 +317,11 @@ class Interesterifier:
                         react_stoic,
                         prod_stoic,
                         rxn_names,
-                        ks,
+                        ks_internal,
                         species_idx,
                         reactants=[dag.name, fa.name],
                         products=[tg1],
-                        k=1.0,
+                        k=(ks.pop(0) if ks is not None else 1.0),
                         name=f"{dag.name} + {fa.name} => {tg1}",
                     )
 
@@ -336,7 +345,7 @@ class Interesterifier:
             react_stoic=react_stoic,
             prod_stoic=prod_stoic,
             init_state=init_state,
-            k_det=ks,
+            k_det=ks_internal,
             rxn_names=rxn_names,
             chem_flag=chem_flag,
         )

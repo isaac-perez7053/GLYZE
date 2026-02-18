@@ -184,7 +184,6 @@ def update_mol_coords_from_fchk(mol, fchk_path, conf_id=-1, assume_bohr=True):
     return mol
 
 
-
 def add_rxn(
     react_stoic,
     prod_stoic,
