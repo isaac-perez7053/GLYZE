@@ -363,7 +363,7 @@ class FattyAcid:
     def vapor_pressure(self)-> float:
         return 101325*np.exp(self.num_carbons)
     
-    # find P at a specific temperature using clausis-clapporon
+    # find P at a specific temperature using clausis-clapporon (T2 = 298.15K)
     def vapor_pressure_temp(self, T)-> float:
         return self.vapor_pressure*np.exp((self.enthalpy_of_vaporization/0.008314462618)*((1/T)-(1/298.15)))
 
