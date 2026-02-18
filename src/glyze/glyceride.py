@@ -5,6 +5,7 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 import copy
 from pathlib import Path
+import numpy as np
 
 GLYCEROL_MOL_MASS = 92.09382 # g/mol for C3H8O3
 
@@ -343,6 +344,28 @@ class FattyAcid:
     def num_carbons(self) -> int:
         """Return the number of carbons in the fatty acid"""
         return self.length
+    # need delta H first // in Kj mol^-1 
+    # TODO: add citation
+    @property
+    def enthalpy_of_vaporization(self) -> float:
+        if len(self.db_positions) == 0:
+            return 5.36*self.num_carbons + 37.1 
+        else:
+            return 5.91*self.num_carbons + 26.4
+        
+    # ln(p/p0) where p0 = 101325 pa
+    @property
+    def ln_vapor_pressure(self)-> float:
+        return -1.01*self.num_carbons - 3.2
+    
+    # need to find p
+    @property
+    def vapor_pressure(self)-> float:
+        return 101325*np.exp(self.num_carbons)
+    
+    # find P at a specific temperature using clausis-clapporon
+    def vapor_pressure_temp(self, T)-> float:
+        return self.vapor_pressure*np.exp((self.enthalpy_of_vaporization/0.008314462618)*((1/T)-(1/298.15)))
 
     @property
     def name(self) -> str:
