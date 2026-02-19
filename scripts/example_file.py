@@ -32,14 +32,13 @@ from glyze.slurm_file import SlurmFile
 """
 
 header = SlurmHeader(
-    job_name="cosacc",     
+    job_name="cosacc",
     partition="main",
     nodes=1,
     ntasks=1,
     cpus_per_task=80,
     time="48:00:00",
-    output="gmx_pp_%j.out",    
-
+    output="gmx_pp_%j.out",
     additional_lines=[
         "#SBATCH --mem=60gb",
         "#SBATCH --hint=nomultithread",
@@ -110,7 +109,7 @@ def main():
     model.run_npt_equilibration(T=300.0, P=1.0, ns=2.0, slurm=slurm)
     model.run_nvt_equilibration(T=300.0, ns=2.0, slurm=slurm)
 
-    # Run viscosity sweep 
+    # Run viscosity sweep
     pp_runs = model.run_pp_viscosity_sweep(
         T=300.0,
         ns=30.0,
@@ -126,5 +125,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
