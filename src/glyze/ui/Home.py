@@ -196,7 +196,9 @@ st.markdown(
 # Card + nav
 st.markdown('<div class="glyze-card">', unsafe_allow_html=True)
 
-st.markdown('<div class="start-title">Where do you want to start?</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="start-title">Where do you want to start?</div>', unsafe_allow_html=True
+)
 st.markdown(
     '<div class="start-subtitle">Choose a module to launch. You can always return here from the sidebar.</div>',
     unsafe_allow_html=True,
@@ -219,6 +221,3 @@ with col2:
         st.switch_page("pages/sfc_calculator_ui.py")
 
 st.markdown("</div>", unsafe_allow_html=True)
-
-
-

@@ -390,7 +390,6 @@ st.markdown(
 )
 
 
-
 # Card wrapper
 st.markdown('<div class="glyze-card">', unsafe_allow_html=True)
 st.markdown('<div class="start-title">SFC Calculator</div>', unsafe_allow_html=True)

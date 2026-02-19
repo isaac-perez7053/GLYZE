@@ -7,6 +7,15 @@ import copy
 from pathlib import Path
 import numpy as np
 
+# Fragment values
+DELTA_H_MAG = 41.73
+DELTA_H_DAG = 3.486
+DELTA_H_TAG = -34.76
+
+DELTA_G_MAG = -19.86
+DELTA_G_DAG = -46.87
+DELTA_G_TAG = -73.88
+
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
     """Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields."""
@@ -147,7 +156,7 @@ class FattyAcid:
                 )
 
         # Check that the branches input is of the right format
-        for pos, _label in self.branches:
+        for pos, _ in self.branches:
             if not (1 <= pos <= self.length):
                 raise ValueError(
                     f"branch position C{pos} out of range for C{self.length}"
@@ -327,11 +336,12 @@ class FattyAcid:
         if optimize:
             mol = _optimize_mol(mol, confId=-1)
         return mol
-    
-    # find P at a specific temperature using clausis-clapporon (T2 = 298.15K)
-    def vapor_pressure_temp(self, T)-> float:
-        return self.vapor_pressure*np.exp((self.enthalpy_of_vaporization/0.008314462618)*((1/T)-(1/298.15)))
 
+    # find P at a specific temperature using clausis-clapporon (T2 = 298.15K)
+    def vapor_pressure_temp(self, T) -> float:
+        return self.vapor_pressure * np.exp(
+            (self.enthalpy_of_vaporization / 0.008314462618) * ((1 / T) - (1 / 298.15))
+        )
 
     @property
     def molar_mass(self) -> float:
@@ -348,25 +358,25 @@ class FattyAcid:
     def num_carbons(self) -> int:
         """Return the number of carbons in the fatty acid"""
         return self.length
-    # need delta H first // in Kj mol^-1 
+
+    # need delta H first // in Kj mol^-1
     # TODO: add citation
     @property
     def enthalpy_of_vaporization(self) -> float:
         if len(self.db_positions) == 0:
-            return 5.36*self.num_carbons + 37.1 
+            return 5.36 * self.num_carbons + 37.1
         else:
-            return 5.91*self.num_carbons + 26.4
-        
+            return 5.91 * self.num_carbons + 26.4
+
     # ln(p/p0) where p0 = 101325 pa
     @property
-    def ln_vapor_pressure(self)-> float:
-        return -1.01*self.num_carbons - 3.2
-    
+    def ln_vapor_pressure(self) -> float:
+        return -1.01 * self.num_carbons - 3.2
+
     # need to find p
     @property
-    def vapor_pressure(self)-> float:
-        return 101325*np.exp(self.num_carbons)
-    
+    def vapor_pressure(self) -> float:
+        return 101325 * np.exp(self.num_carbons)
 
     @property
     def name(self) -> str:
@@ -674,7 +684,13 @@ class Glyceride:
 
     # find vapor pressure based on temperature
     def vapor_pressure(self, T) -> float:
-        return np.exp((-self.gibbs_of_vaporitzation/(0.008314*298.15*np.log(10)))+((self.enthalpy_of_vaporitzation/(0.008314*np.log(10)))*((1/298.15)-(1/T))))
+        return np.exp(
+            (-self.gibbs_of_vaporitzation / (0.008314 * 298.15 * np.log(10)))
+            + (
+                (self.enthalpy_of_vaporitzation / (0.008314 * np.log(10)))
+                * ((1 / 298.15) - (1 / T))
+            )
+        )
 
     def _add_branch_methyl(self, rw: Chem.RWMol, carbon_idx: int) -> None:
         """Attach a methyl (-CH3) to the given carbon atom index."""
@@ -806,40 +822,34 @@ class Glyceride:
         """Return the number of carbons in the glyceride molecule"""
         # Add 3 for the glycerol molecule
         return sum(self.chain_lengths) + 3
-    
+
     # enthalphy of vaportization for mags, dags, tags
     @property
     def enthalpy_of_vaporitzation(self) -> float:
-        delta_h_mag = 41.73
-        delta_h_dag = 3.486
-        delta_h_tag = -34.76
         fa = [x for x in self.sn if x]
         # mag
         if len(fa) == 1:
-            return delta_h_mag + fa[0].num_carbons*2.09 + 31.4
+            return DELTA_H_MAG + fa[0].num_carbons * 2.09 + 31.4
         # dag
         elif len(fa) == 2:
-            return delta_h_dag + (fa[0].num_carbons*2.09 + 31.4) + (fa[1].num_carbons*2.09 + 31.4)
+            return (DELTA_H_DAG + sum(fa_i.num_carbons * 2.09 + 31.4 for fa_i in fa))
         # tag
         else:
-            return delta_h_tag + (fa[0].num_carbons*2.09 + 31.4) + (fa[1].num_carbons*2.09 + 31.4) + (fa[2].num_carbons*2.09 + 31.4)
+            return (DELTA_H_TAG + sum(fa_i.num_carbons * 2.09 + 31.4 for fa_i in fa))
 
     # gibbs free energy of vaporization for mags, dags, tags
     @property
     def gibbs_of_vaporitzation(self) -> float:
-        delta_g_mag = -19.86
-        delta_g_dag = -46.87
-        delta_g_tag = -73.88
         fa = [x for x in self.sn if x]
         # mag
         if len(fa) == 1:
-            return delta_g_mag + fa[0].num_carbons*1.66 + 22
+            return DELTA_G_MAG + fa[0].num_carbons * 1.66 + 22
         # dag
         elif len(fa) == 2:
-            return delta_g_dag + (fa[0].num_carbons*1.66 + 22) + (fa[1].num_carbons*1.66 + 22)
+            return (DELTA_G_DAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
         # tag
         else:
-            return delta_g_tag + (fa[0].num_carbons*1.66 + 22) + (fa[1].num_carbons*1.66 + 22) + (fa[2].num_carbons*1.66 + 22)
+            return (DELTA_G_TAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
 
     @property
     def chain_lengths(self) -> Tuple[int, int, int]:

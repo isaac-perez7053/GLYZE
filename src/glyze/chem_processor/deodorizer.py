@@ -54,7 +54,7 @@ class Deodorizer:
         for component, _ in mix.mix.items():
 
             Va = mix.mix[component]
-            A = P / (E * component.vapor_pressure(T, P))
+            A = P / (E * component.vapor_pressure(T))
             V0 = Deodorizer._solve_V0(Va, S, A)
             # Edit the qty of the current GlycerideMix
             mix.change_qty(component, V0)

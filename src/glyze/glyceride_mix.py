@@ -115,7 +115,7 @@ def _canonical_component(comp: MixtureComponent) -> MixtureComponent:
     return comp
 
 
-def water_vapor_pressure(T: float, P: float = 1.0):
+def water_vapor_pressure(T: float):
     """
     Calculate water vapor pressure in mmHg using Antoine equation.
     T is temperature in Celsius.
@@ -127,10 +127,10 @@ def water_vapor_pressure(T: float, P: float = 1.0):
     log_p = A - B / (T + C)
     p_mmHg = 10**log_p
     # Convert to atm if needed
-    return p_mmHg / 760.0 if P == 1.0 else p_mmHg
+    return p_mmHg / 760.0 
 
 
-def glycerol_vapor_pressure(T: float, P: float = 1.0):
+def glycerol_vapor_pressure(T: float):
     """
     Calculate glycerol vapor pressure in mmHg using Antoine equation.
     T is temperature in Celsius.
@@ -142,7 +142,7 @@ def glycerol_vapor_pressure(T: float, P: float = 1.0):
     log_p = A - B / (T + C)
     p_mmHg = 10**log_p
     # Convert to atm if needed
-    return p_mmHg / 760.0 if P == 1.0 else p_mmHg
+    return p_mmHg / 760.0
 
 
 class MixtureComponent:
@@ -165,13 +165,13 @@ class MixtureComponent:
                 f"Please enter a valid component name (e.g., G_XXX, NXXX, H2O, Glycerol)"
             )
 
-    def vapor_pressure(self, T: float, P: float = 1.0):
+    def vapor_pressure(self, T: float):
         if hasattr(self.component, "vapor_pressure"):
-            return self.component.vapor_pressure(T, P)
+            return self.component.vapor_pressure(T)
         elif self.component == "H2O":
-            return water_vapor_pressure(T, P)
+            return water_vapor_pressure(T)
         else:
-            return glycerol_vapor_pressure(T, P)
+            return glycerol_vapor_pressure(T)
 
     @property
     def name(self):

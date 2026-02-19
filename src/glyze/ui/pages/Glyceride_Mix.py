@@ -417,7 +417,9 @@ st.markdown(
 
 # Card wrapper
 st.markdown('<div class="glyze-card">', unsafe_allow_html=True)
-st.markdown('<div class="start-title">Glyceride Mix Builder</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="start-title">Glyceride Mix Builder</div>', unsafe_allow_html=True
+)
 st.markdown(
     '<div class="start-subtitle">Add species on the left, edit the mixture in the center, export on the right.</div>',
     unsafe_allow_html=True,
@@ -463,8 +465,12 @@ def format_fa_name(
 
     if dd > 0:
         if len(db_positions) != dd or len(db_stereo) != dd:
-            raise ValueError("DB count must match number of DB positions and stereochem entries.")
-        name += "P" + "".join(f"{int(p):02d}{st.upper()}" for p, st in zip(db_positions, db_stereo))
+            raise ValueError(
+                "DB count must match number of DB positions and stereochem entries."
+            )
+        name += "P" + "".join(
+            f"{int(p):02d}{st.upper()}" for p, st in zip(db_positions, db_stereo)
+        )
 
     if methyl_positions:
         name += "M" + "".join(f"{int(p):02d}" for p in methyl_positions)
@@ -495,6 +501,7 @@ def comp_display_name(comp: Any) -> str:
         return str(comp.name)
     return str(comp)
 
+
 # Dataclass containing a row of the list in the middle of the page
 @dataclass
 class MixRow:
@@ -519,7 +526,6 @@ def merge_rows(rows: List[MixRow]) -> List[MixRow]:
         else:
             merged[key] = MixRow(r.comp, float(r.moles))
     return [merged[k] for k in sorted(merged.keys())]
-
 
 
 def add_to_mix(comp: Any, qty: float, qty_unit: str) -> None:
@@ -562,7 +568,9 @@ def rows_to_display_df(rows: List[MixRow], display_unit: str) -> pd.DataFrame:
     return pd.DataFrame({"Species": species, "Quantity": qty})
 
 
-def apply_table_edits_to_rows(edited_df: pd.DataFrame, rows: List[MixRow], display_unit: str) -> List[MixRow]:
+def apply_table_edits_to_rows(
+    edited_df: pd.DataFrame, rows: List[MixRow], display_unit: str
+) -> List[MixRow]:
     name_to_comp = {comp_display_name(r.comp): r.comp for r in rows}
 
     new_rows: List[MixRow] = []
@@ -594,20 +602,21 @@ def apply_table_edits_to_rows(edited_df: pd.DataFrame, rows: List[MixRow], displ
         if s > 0:
             fracs = [f / s for f in fracs]
             new_rows = [
-                MixRow(r.comp, (fracs[i] * 1.0) / molar_mass_of(r.comp)) for i, r in enumerate(new_rows)
+                MixRow(r.comp, (fracs[i] * 1.0) / molar_mass_of(r.comp))
+                for i, r in enumerate(new_rows)
             ]
 
     return merge_rows(new_rows)
 
+
 # Turn the data frame to a csv (TODO: Ensure that this dataframe is accessible
-#to other pages and can be turned into a GlycerideMix)
+# to other pages and can be turned into a GlycerideMix)
 def export_csv_bytes(rows: List[MixRow], export_unit: str) -> bytes:
     df = rows_to_display_df(rows, export_unit)
     df.insert(2, "Units", export_unit)
     buf = io.StringIO()
     df.to_csv(buf, index=False)
     return buf.getvalue().encode("utf-8")
-
 
 
 display_unit = st.session_state.setdefault("display_unit", "mole")
@@ -619,19 +628,23 @@ left, mid, right = st.columns([1.2, 1.9, 1.2], gap="large")
 with left:
     st.subheader("Add species")
 
-    # Quick add by name 
+    # Quick add by name
     with st.expander("Quick add by name", expanded=True):
         # How to use instructions
         st.write("Examples: `N18D1P09Z`, `G_N18D1P09Z_N16D0_N16D0`, `H2O`, `Glycerol`")
-        
+
         # Text input for name
         name_str = st.text_input("Component name", key="quick_name")
 
         # qty input
-        qty = st.number_input("Quantity", min_value=0.0, value=1.0, step=0.1, key="quick_qty")
+        qty = st.number_input(
+            "Quantity", min_value=0.0, value=1.0, step=0.1, key="quick_qty"
+        )
 
         # Units
-        qty_unit = st.selectbox("Quantity units", ["mole", "gram"], key="quick_qty_unit")
+        qty_unit = st.selectbox(
+            "Quantity units", ["mole", "gram"], key="quick_qty_unit"
+        )
 
         # Add button
         if st.button("Add", use_container_width=True, key="quick_add_btn"):
@@ -645,21 +658,41 @@ with left:
     # Build fatty acids from individual inputs
     with st.expander("Build fatty acid by fields"):
         # Carbons and db_count
-        carbons = st.number_input("Carbons (CC)", min_value=2, max_value=40, value=18, step=1, key="fa_cc")
-        db_count = st.number_input("Double bonds (DD)", min_value=0, max_value=8, value=1, step=1, key="fa_dd")
+        carbons = st.number_input(
+            "Carbons (CC)", min_value=2, max_value=40, value=18, step=1, key="fa_cc"
+        )
+        db_count = st.number_input(
+            "Double bonds (DD)", min_value=0, max_value=8, value=1, step=1, key="fa_dd"
+        )
 
-        #Double bond positions input
+        # Double bond positions input
         st.caption("Double-bond positions + stereo (Z/E) — one per double bond.")
-        db_pos_str = st.text_input("DB positions (comma-separated)", value="9" if db_count else "", key="fa_dbpos")
-        db_st_str = st.text_input("DB stereo (comma-separated, Z/E)", value="Z" if db_count else "", key="fa_dbst")
+        db_pos_str = st.text_input(
+            "DB positions (comma-separated)",
+            value="9" if db_count else "",
+            key="fa_dbpos",
+        )
+        db_st_str = st.text_input(
+            "DB stereo (comma-separated, Z/E)",
+            value="Z" if db_count else "",
+            key="fa_dbst",
+        )
 
         # Optional branches input
         st.caption("Optional branches")
-        methyl_str = st.text_input("Methyl positions (comma-separated)", value="", key="fa_methyl")
-        hydroxyl_str = st.text_input("Hydroxyl positions (comma-separated)", value="", key="fa_oh")
+        methyl_str = st.text_input(
+            "Methyl positions (comma-separated)", value="", key="fa_methyl"
+        )
+        hydroxyl_str = st.text_input(
+            "Hydroxyl positions (comma-separated)", value="", key="fa_oh"
+        )
 
-        fa_qty = st.number_input("Quantity", min_value=0.0, value=1.0, step=0.1, key="fa_qty")
-        fa_qty_unit = st.selectbox("Quantity units", ["mole", "gram"], key="fa_qty_unit")
+        fa_qty = st.number_input(
+            "Quantity", min_value=0.0, value=1.0, step=0.1, key="fa_qty"
+        )
+        fa_qty_unit = st.selectbox(
+            "Quantity units", ["mole", "gram"], key="fa_qty_unit"
+        )
 
         # Parse the integers (then will be input as strings)
         def parse_int_list(s: str) -> List[int]:
@@ -680,7 +713,9 @@ with left:
             return out
 
         # Build and add the fatty acid to an internal list
-        if st.button("Build + Add Fatty Acid", use_container_width=True, key="fa_add_btn"):
+        if st.button(
+            "Build + Add Fatty Acid", use_container_width=True, key="fa_add_btn"
+        ):
             try:
                 db_positions = parse_int_list(db_pos_str)
                 db_stereo = parse_stereo_list(db_st_str)
@@ -710,11 +745,15 @@ with left:
         fa2 = st.text_input("FA 2", value="N16D00", key="g_fa2")
         fa3 = st.text_input("FA 3", value="N16D00", key="g_fa3")
 
-        g_qty = st.number_input("Quantity", min_value=0.0, value=1.0, step=0.1, key="g_qty")
+        g_qty = st.number_input(
+            "Quantity", min_value=0.0, value=1.0, step=0.1, key="g_qty"
+        )
         g_qty_unit = st.selectbox("Quantity units", ["mole", "gram"], key="g_qty_unit")
 
-        # Add the objects to the mixture 
-        if st.button("🧈 Build + Add Glyceride", use_container_width=True, key="g_add_btn"):
+        # Add the objects to the mixture
+        if st.button(
+            "🧈 Build + Add Glyceride", use_container_width=True, key="g_add_btn"
+        ):
             try:
                 _ = FattyAcid.from_name(fa1.strip())
                 _ = FattyAcid.from_name(fa2.strip())
@@ -762,7 +801,9 @@ with mid:
         num_rows="fixed",
         column_config={
             "Species": st.column_config.TextColumn(disabled=True),
-            "Quantity": st.column_config.NumberColumn(min_value=0.0, step=0.1, format="%.6g"),
+            "Quantity": st.column_config.NumberColumn(
+                min_value=0.0, step=0.1, format="%.6g"
+            ),
         },
         key="mix_table_editor",
     )
@@ -817,7 +858,9 @@ with right:
     st.divider()
     st.subheader("Build object")
 
-    if st.button("Build GlycerideMix", use_container_width=True, disabled=(len(rows) == 0)):
+    if st.button(
+        "Build GlycerideMix", use_container_width=True, disabled=(len(rows) == 0)
+    ):
         try:
             mix_dict = {r.comp: r.moles for r in rows}
             mix_obj = GlycerideMix(mix_dict, units="mole", sort=True)
@@ -828,4 +871,3 @@ with right:
 
 # close card
 st.markdown("</div>", unsafe_allow_html=True)
-
