@@ -328,6 +328,11 @@ class FattyAcid:
         if optimize:
             mol = _optimize_mol(mol, confId=-1)
         return mol
+    
+    # find P at a specific temperature using clausis-clapporon (T2 = 298.15K)
+    def vapor_pressure_temp(self, T)-> float:
+        return self.vapor_pressure*np.exp((self.enthalpy_of_vaporization/0.008314462618)*((1/T)-(1/298.15)))
+
 
     @property
     def molar_mass(self) -> float:
@@ -363,9 +368,6 @@ class FattyAcid:
     def vapor_pressure(self)-> float:
         return 101325*np.exp(self.num_carbons)
     
-    # find P at a specific temperature using clausis-clapporon (T2 = 298.15K)
-    def vapor_pressure_temp(self, T)-> float:
-        return self.vapor_pressure*np.exp((self.enthalpy_of_vaporization/0.008314462618)*((1/T)-(1/298.15)))
 
     @property
     def name(self) -> str:
@@ -670,6 +672,10 @@ class Glyceride:
         with open(gjf_path, "w") as f:
             f.write("\n".join(lines))
 
+    # find vapor pressure based on temperature
+    def vapor_pressure(self, T) -> float:
+        return np.exp((-self.gibbs_of_vaporitzation/(0.008314*298.15*np.log(10)))+((self.enthalpy_of_vaporitzation/(0.008314*np.log(10)))*((1/298.15)-(1/T))))
+
     def _add_branch_methyl(self, rw: Chem.RWMol, carbon_idx: int) -> None:
         """Attach a methyl (-CH3) to the given carbon atom index."""
         c = rw.AddAtom(Chem.Atom(6))
@@ -800,6 +806,40 @@ class Glyceride:
         """Return the number of carbons in the glyceride molecule"""
         # Add 3 for the glycerol molecule
         return sum(self.chain_lengths) + 3
+    
+    # enthalphy of vaportization for mags, dags, tags
+    @property
+    def enthalpy_of_vaporitzation(self) -> float:
+        delta_h_mag = 41.73
+        delta_h_dag = 3.486
+        delta_h_tag = -34.76
+        fa = [x for x in self.sn if x]
+        # mag
+        if len(fa) == 1:
+            return delta_h_mag + fa[0].num_carbons*2.09 + 31.4
+        # dag
+        elif len(fa) == 2:
+            return delta_h_dag + (fa[0].num_carbons*2.09 + 31.4) + (fa[1].num_carbons*2.09 + 31.4)
+        # tag
+        else:
+            return delta_h_tag + (fa[0].num_carbons*2.09 + 31.4) + (fa[1].num_carbons*2.09 + 31.4) + (fa[2].num_carbons*2.09 + 31.4)
+
+    # gibbs free energy of vaporization for mags, dags, tags
+    @property
+    def gibbs_of_vaporitzation(self) -> float:
+        delta_g_mag = -19.86
+        delta_g_dag = -46.87
+        delta_g_tag = -73.88
+        fa = [x for x in self.sn if x]
+        # mag
+        if len(fa) == 1:
+            return delta_g_mag + fa[0].num_carbons*1.66 + 22
+        # dag
+        elif len(fa) == 2:
+            return delta_g_dag + (fa[0].num_carbons*1.66 + 22) + (fa[1].num_carbons*1.66 + 22)
+        # tag
+        else:
+            return delta_g_tag + (fa[0].num_carbons*1.66 + 22) + (fa[1].num_carbons*1.66 + 22) + (fa[2].num_carbons*1.66 + 22)
 
     @property
     def chain_lengths(self) -> Tuple[int, int, int]:
