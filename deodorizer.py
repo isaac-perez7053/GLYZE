@@ -1,4 +1,5 @@
-import math 
+import math
+
 
 def solve_V0(Va, S, A, tol=1e-12, max_iter=100):
 
@@ -8,7 +9,7 @@ def solve_V0(Va, S, A, tol=1e-12, max_iter=100):
     # Begin with a starting guess
     V0 = Va * 0.5
 
-    # 
+    #
     def f(v):
         return A * math.log(Va / v) + (A - 1) * (Va - v) - S
 
@@ -16,8 +17,8 @@ def solve_V0(Va, S, A, tol=1e-12, max_iter=100):
         return -A / v - (A - 1)
 
     for _ in range(max_iter):
-        
-        # First solve for the value of Steam for a given species 
+
+        # First solve for the value of Steam for a given species
         fv = f(V0)
         if abs(fv) < tol:
             return max(V0, 0.0)
@@ -32,9 +33,10 @@ def solve_V0(Va, S, A, tol=1e-12, max_iter=100):
 
     raise RuntimeError("V0 solver failed")
 
+
 def evaluate_composition(S, components, Pt, E):
     """
-    Solve Bailey's equation 
+    Solve Bailey's equation
     """
     final = {}
     total_final = 0.0
@@ -51,9 +53,7 @@ def evaluate_composition(S, components, Pt, E):
         final[name] = V0
         total_final += V0
 
-    mole_fractions = {
-        k: v / total_final for k, v in final.items()
-    }
+    mole_fractions = {k: v / total_final for k, v in final.items()}
 
     return mole_fractions, final, total_final
 
@@ -71,7 +71,7 @@ def optimize_stripping(
     S_low, S_high = S_bounds
 
     def FA_fraction(S):
-        
+
         x, _, _ = evaluate_composition(S, components, Pt, E)
         return sum(x[name] for name in fatty_acid_names)
 
@@ -88,9 +88,7 @@ def optimize_stripping(
         else:
             S_high = S_mid
 
-    final_x, final_moles, total_final = evaluate_composition(
-        S_mid, components, Pt, E
-    )
+    final_x, final_moles, total_final = evaluate_composition(S_mid, components, Pt, E)
 
     initial_total = sum(c["moles"] for c in components.values())
 
@@ -111,9 +109,9 @@ def optimize_stripping(
 # -------------------------
 
 components = {
-    "oleic":        {"moles": 0.05, "vapor_pressure": 0.012},
-    "palmitic":     {"moles": 0.03, "vapor_pressure": 0.007},
-    "stearic":      {"moles": 0.02, "vapor_pressure": 0.005},
+    "oleic": {"moles": 0.05, "vapor_pressure": 0.012},
+    "palmitic": {"moles": 0.03, "vapor_pressure": 0.007},
+    "stearic": {"moles": 0.02, "vapor_pressure": 0.005},
     "triglyceride": {"moles": 0.90, "vapor_pressure": 1e-6},
 }
 

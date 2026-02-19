@@ -114,7 +114,8 @@ def _canonical_component(comp: MixtureComponent) -> MixtureComponent:
         return comp.canonicalize()
     return comp
 
-def water_vapor_pressure(T: float, P: float=1.0):
+
+def water_vapor_pressure(T: float, P: float = 1.0):
     """
     Calculate water vapor pressure in mmHg using Antoine equation.
     T is temperature in Celsius.
@@ -124,11 +125,12 @@ def water_vapor_pressure(T: float, P: float=1.0):
     A, B, C = 8.07131, 1730.63, 233.426
     # Calculate vapor pressure in mmHg
     log_p = A - B / (T + C)
-    p_mmHg = 10 ** log_p
+    p_mmHg = 10**log_p
     # Convert to atm if needed
     return p_mmHg / 760.0 if P == 1.0 else p_mmHg
 
-def glycerol_vapor_pressure(T: float, P:float=1.0):
+
+def glycerol_vapor_pressure(T: float, P: float = 1.0):
     """
     Calculate glycerol vapor pressure in mmHg using Antoine equation.
     T is temperature in Celsius.
@@ -138,28 +140,31 @@ def glycerol_vapor_pressure(T: float, P:float=1.0):
     A, B, C = 7.28542, 1385.03, 220.79
     # Calculate vapor pressure in mmHg
     log_p = A - B / (T + C)
-    p_mmHg = 10 ** log_p
+    p_mmHg = 10**log_p
     # Convert to atm if needed
     return p_mmHg / 760.0 if P == 1.0 else p_mmHg
 
-class MixtureComponent: 
+
+class MixtureComponent:
     """"""
 
     def __init__(self, component):
         self.component = component
 
-    @classmethod 
-    def from_string(cls, string: str): 
+    @classmethod
+    def from_string(cls, string: str):
         """"""
         if string.startswith("G_"):
             return cls(Glyceride.from_name(string))
         elif string.startswith("N"):
             return cls(FattyAcid.from_name(string))
-        elif string == 'H2O' or string == 'Glycerol':
+        elif string == "H2O" or string == "Glycerol":
             return cls(string)
         else:
-            raise TypeError(f"Please enter a valid component name (e.g., G_XXX, NXXX, H2O, Glycerol)")
-        
+            raise TypeError(
+                f"Please enter a valid component name (e.g., G_XXX, NXXX, H2O, Glycerol)"
+            )
+
     def vapor_pressure(self, T: float, P: float = 1.0):
         if hasattr(self.component, "vapor_pressure"):
             return self.component.vapor_pressure(T, P)
@@ -167,13 +172,12 @@ class MixtureComponent:
             return water_vapor_pressure(T, P)
         else:
             return glycerol_vapor_pressure(T, P)
-        
+
     @property
     def name(self):
         if hasattr(self.component, "name"):
             return self.component.name
         return str(self.component)
-
 
 
 class GlycerideMix:
@@ -273,7 +277,7 @@ class GlycerideMix:
     def change_qty(self, component: MixtureComponent, new_quantity: float):
         """
         Change the quantity of a component in the mixture.
-        
+
         """
         comp_c = _canonical_component(component)
         key = _canonical_key(comp_c)
@@ -419,7 +423,6 @@ class GlycerideMix:
             # Keep references consistent
             self.mol_list[i] = updated
             self._mol_by_glyceride[g] = updated
-
 
     def total_quantity(self) -> float:
         """Calculate the total quantity of all glycerides in the mix."""
