@@ -7,8 +7,6 @@ import copy
 from pathlib import Path
 import numpy as np
 
-GLYCEROL_MOL_MASS = 92.09382  # g/mol for C3H8O3
-
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
     """Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields."""
