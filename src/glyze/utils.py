@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 from rdkit.Geometry import Point3D
+import numpy as np
 
 BOHR_TO_ANG = 0.52917721092
 
@@ -181,3 +182,37 @@ def update_mol_coords_from_fchk(mol, fchk_path, conf_id=-1, assume_bohr=True):
         conf.SetAtomPosition(i, Point3D(x, y, z))
 
     return mol
+
+
+def add_rxn(
+    react_stoic,
+    prod_stoic,
+    rxn_names,
+    ks,
+    species_idx,
+    reactants,
+    products,
+    k,
+    name,
+):
+    """Build one reaction column using full-length vectors"""
+    ns = len(species_idx)
+    # Each reaction is a column vector (species are rows)
+    r_col = np.zeros((ns, 1), dtype=float)
+    p_col = np.zeros((ns, 1), dtype=float)
+
+    for nm in reactants:
+        r_col[species_idx[nm], 0] += 1.0
+    for nm in products:
+        p_col[species_idx[nm], 0] += 1.0
+
+    # Append as new columns
+    if len(react_stoic) == 0:
+        react_stoic.append(r_col)
+        prod_stoic.append(p_col)
+    else:
+        react_stoic.append(r_col)
+        prod_stoic.append(p_col)
+
+    ks.append(float(k))
+    rxn_names.append(name)
