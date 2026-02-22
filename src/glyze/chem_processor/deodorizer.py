@@ -17,7 +17,7 @@ class Deodorizer:
         def f(v):
             return A * math.log(Va / v) + (A - 1) * (Va - v) - S
 
-        # It's derivative
+        # Its derivative
         def df(v):
             return -A / v - (A - 1)
 
@@ -31,7 +31,7 @@ class Deodorizer:
 
         # Use other methods if the Newton-Raphson root solver fails
         except (RuntimeError, OverflowError, ZeroDivisionError):
-            # find a bracket [a,b] where f(a)*f(b) < 0
+            # find a bracket [a,b] where f(a)*f(b) < 0 (i.e. a root exists)
             a, b = eps, Va - eps
             # try to shrink bracket by sweeping inward if sign not found
             N = 50
@@ -66,15 +66,14 @@ class Deodorizer:
 
     def deodorizer(
         self,
-        T: float,
-        P: float,
-        E: float = 0.5,
-        Pt: float = 0.000263,
-        target: float = 0.001,
-        sbounds=(1e-6, 5),
-        tol=1e-6,
-        nsteps=100,
-        verbose=True,
+        T: float,               # Temperature, [K]
+        P: float,               # System pressure, [Pa]
+        E: float = 0.5,         # deodorization efficiency factor
+        target: float = 0.001,  # target fatty acid fraction after deodorization [mol/mol]
+        sbounds=(1e-6, 5),      # bounds for steam factor S [mol/mol oil]
+        tol=1e-6,               # tolerance for bisection method convergence
+        nsteps=100,             # number of steps for bisection method
+        verbose=True,           # print results or not
     ):
         """
         Perform deodorization on a glyceride mix at a given temperature and pressure.
@@ -91,10 +90,13 @@ class Deodorizer:
         """
 
         def FA_fraction(S):
-
-            x, (_, _) = self.single_pass(S, T, Pt, E)
+            """
+            report the sum of fatty acids in the final mixture after a single pass with steam factor S
+            """
+            x, (_, _) = self.single_pass(S, T, P, E)
             return sum(x[name] for name in self.fa_list)
 
+        # use bisection method to find the steam factor S that achieves the target fatty acid fraction
         for _ in range(nsteps):
 
             S_mid = 0.5 * (sbounds[0] + sbounds[1])
@@ -108,7 +110,7 @@ class Deodorizer:
             else:
                 sbounds[1] = S_mid
 
-        final_x, (_, total_final) = self.single_pass(S_mid, T, Pt, E)
+        final_x, (_, total_final) = self.single_pass(S_mid, T, P, E)
         initial_total = sum(self.mix.values())
 
         if verbose:
