@@ -5,8 +5,7 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 import copy
 from pathlib import Path
-
-import scipy
+import numpy as np
 
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
@@ -780,9 +779,9 @@ class Glyceride:
         return "G_" + "_".join(fa_name(fa) for fa in self.sn)
     
     @property
-    def T_1mTorr_vapor_pressure(self):
-        """Calculate the temperature at which the vapor pressure is 1mTorr via curve fit from data."""
-        Temperature = -400 + 161*scipy.log(self.numCarbons) # K
+    def T_1uTorr_vapor_pressure(self):
+        """Calculate the temperature at which the vapor pressure is 1uTorr via curve fit from data."""
+        Temperature = -126 + 161*np.log(self.numCarbons) # K
         return Temperature
     
     @property
