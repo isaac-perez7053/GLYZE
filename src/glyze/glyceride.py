@@ -337,12 +337,6 @@ class FattyAcid:
             mol = _optimize_mol(mol, confId=-1)
         return mol
 
-    # find P at a specific temperature using clausis-clapporon (T2 = 298.15K)
-    def vapor_pressure_temp(self, T) -> float:
-        return self.vapor_pressure * np.exp(
-            (self.enthalpy_of_vaporization / 0.008314462618) * ((1 / T) - (1 / 298.15))
-        )
-
     @property
     def molar_mass(self) -> float:
         """Calculate the molar mass of the fatty acid in g/mol"""
