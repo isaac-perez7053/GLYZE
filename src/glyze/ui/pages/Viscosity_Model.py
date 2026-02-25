@@ -208,8 +208,15 @@ st.subheader("References")
 
 st.markdown(
     """
-1. Anand, K., Ranjan, A., & Mehta, P. S. (2010). *Estimating the viscosity of vegetable oil and biodiesel fuels*. **Energy & Fuels, 24**, 664–672. https://doi.org/10.1021/ef900818s
+1. Anand, K., Ranjan, A., & Mehta, P. S. (2010). *Estimating the viscosity of vegetable oil and biodiesel fuels*. **Energy & Fuels, 24**, 664-672. https://doi.org/10.1021/ef900818s
+"""
+)
 
+st.divider()
+st.subheader("Instrumentation")
+
+st.markdown(
+"""
 2. Brookfield Engineering Laboratories, Inc. (n.d.). *DV-II+Pro viscometer: Operating instructions* (Manual No. M03-165-F0612). Brookfield Engineering Laboratories, Inc., Middleboro, MA, USA.
 """
 )
