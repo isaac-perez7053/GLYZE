@@ -338,8 +338,8 @@ class FattyAcid:
         return mol
 
     # find P at a specific temperature using clausis-clapporon (T2 = 298.15K)
-    def vapor_pressure_temp(self, T) -> float:
-        return self.vapor_pressure * np.exp(
+    def vapor_pressure(self, T) -> float:
+        return (101325 * np.exp(self.num_carbons)) * np.exp(
             (self.enthalpy_of_vaporization / 0.008314462618) * ((1 / T) - (1 / 298.15))
         )
 
@@ -372,11 +372,6 @@ class FattyAcid:
     @property
     def ln_vapor_pressure(self) -> float:
         return -1.01 * self.num_carbons - 3.2
-
-    # need to find p
-    @property
-    def vapor_pressure(self) -> float:
-        return 101325 * np.exp(self.num_carbons)
 
     @property
     def name(self) -> str:
