@@ -166,12 +166,12 @@ class MixtureComponent:
             )
 
     def vapor_pressure(self, T: float):
-        if hasattr(self.component, "vapor_pressure"):
-            return self.component.vapor_pressure(T)
-        elif self.component == "H2O":
-            return water_vapor_pressure(T)
-        else:
+        vp = getattr(self.component, "vapor_pressure", None)
+        if vp is None:
+            if self.component == "H2O": # TODO: should we use H2O or H20?? should be standardized
+                return water_vapor_pressure(T)
             return glycerol_vapor_pressure(T)
+        return vp(T) if callable(vp) else vp
 
     @property
     def name(self):
@@ -237,42 +237,30 @@ class GlycerideMix:
 
         Parameters:
         -----------
-            csv_path (str): The path to the
+            csv_path (str): The path to the csv file
 
         Returns:
         --------
             GlycerideMix
         """
-        data = []
-        try:
-            # Open file
-            with open(csv_path, mode="r", newline="", encoding="utf-8") as f:
-                # DictReader uses the header row for keys
-                reader = csv.DictReader(f)
-                for row in reader:
-                    values = list(row.values())
-                    # Extract H20 and Glycerol from the mix first if found
-                    if values[0] == "H2O" or values[0] == "Glycerol":
-                        data.append(((values[0], values[1]), values[2]))
-                    else:
-                        data.append(
-                            (
-                                (
-                                    (
-                                        Glyceride.from_name(values[0])
-                                        if values[0].startswith("G_")
-                                        else FattyAcid.from_name(values[0])
-                                    ),
-                                    values[1],
-                                ),
-                                values[2],
-                            )
-                        )
+        mix = []
+        units = None
 
-        except FileNotFoundError:
-            print(f"Error: The file {csv_path} was not found.")
-        mix = [x[0] for x in data]
-        return cls(mix, data[0][1])
+        with open(csv_path, mode="r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                values = list(row.values())
+                name  = values[0].strip()
+                qty   = float(values[1])
+                units = values[2].strip()
+                mix.append((MixtureComponent.from_string(name), qty))
+
+        if not mix:
+            raise ValueError(f"CSV file '{csv_path}' is empty or has no data rows.")
+        if units is None:
+            raise ValueError(f"Could not determine units from '{csv_path}'.")
+
+        return cls(mix, units)
 
     def change_qty(self, component: MixtureComponent, new_quantity: float):
         """

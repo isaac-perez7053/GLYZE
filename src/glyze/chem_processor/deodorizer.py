@@ -1,71 +1,96 @@
 from glyze.glyceride_mix import GlycerideMix
 from scipy import optimize
 import math
-
+import plotly.graph_objects as go
 
 class Deodorizer:
 
-    def __init__(self, mix: GlycerideMix):
-        self.mix = mix
-
     @staticmethod
     def _solve_V0(Va, S, A, tol=1e-12, maxiter=100):
+        """
+        Solve for V0 (remaining moles after stripping) given:
+            Va  - initial moles of component
+            S   - steam stripping factor [mol steam / mol oil]
+            A   - relative volatility ratio P / (E * vapor_pressure)
+
+        The equation is:
+            A * ln(Va/V0) + (A - 1)*(Va - V0) - S = 0
+
+        When A << 1 (highly volatile component, low system pressure), the component
+        can be completely stripped and f(v) > 0 for all v in (0, Va), meaning no
+        finite root exists. Physically this means V0 → 0, so we return a near-zero
+        residual (tol) in that case.
+        """
         if Va == 0:
             return 0.0
 
-        # Bailey's equation wnere the right hand side is equal to zero.
+        eps = 1e-16
+
         def f(v):
             return A * math.log(Va / v) + (A - 1) * (Va - v) - S
 
-        # Its derivative
         def df(v):
             return -A / v - (A - 1)
 
-        # starting guess in (0, Va)
+        # ------------------------------------------------------------------ #
+        # Quick bracket check before attempting any root finder.              #
+        # f(Va) = -S < 0 always (since log(1)=0 and last term vanishes).     #
+        # If f(eps) <= 0 as well, the root is outside (0, Va) — the          #
+        # component is completely stripped; return near-zero residual.        #
+        # ------------------------------------------------------------------ #
+        try:
+            f_lo = f(eps)
+        except (ValueError, ZeroDivisionError, OverflowError):
+            # log of a tiny positive number may overflow; treat as +inf → bracketed
+            f_lo = float('inf')
+
+        f_hi = -S  # f(Va) = A*log(1) + (A-1)*0 - S = -S
+
+        if f_lo <= 0:
+            # No root in (0, Va): component is effectively completely stripped
+            return tol
+
+        # f_lo > 0 and f_hi < 0 → valid bracket exists, proceed with Newton/Brent
         x0 = Va * 0.5
-        # to ensure v stays in (eps, Va-eps)
-        eps = 1e-16
 
         try:
-            return optimize.newton(f, x0, fprime=df, tol=tol, maxiter=maxiter)
+            result = optimize.newton(f, x0, fprime=df, tol=tol, maxiter=maxiter)
+            if result <= 0 or result > Va:
+                raise ValueError("Newton result out of valid range")
+            return result
 
-        # Use other methods if the Newton-Raphson root solver fails
-        except (RuntimeError, OverflowError, ZeroDivisionError):
-            # find a bracket [a,b] where f(a)*f(b) < 0 (i.e. a root exists)
+        except (RuntimeError, OverflowError, ZeroDivisionError, ValueError):
             a, b = eps, Va - eps
-            # try to shrink bracket by sweeping inward if sign not found
-            N = 50
-            for i in range(N):
-                try:
-                    # Extremely useful root solver
-                    if f(a) * f(b) < 0:
-                        return optimize.brentq(f, a, b, xtol=tol, maxiter=maxiter)
-                except ValueError:
-                    pass
-                # TODO: progressively move a inward, b inward etc.
-            return optimize.brentq(f, a, b, xtol=tol, maxiter=maxiter)
+            try:
+                return optimize.brentq(f, a, b, xtol=tol, maxiter=maxiter)
+            except ValueError:
+                # Bracket still failed — fall back to near-zero (fully stripped)
+                return tol
 
+    @staticmethod
     def single_pass(mix: GlycerideMix, S: float, T: float, P: float, E: float):
         """
-        Pass the GlycerideMixture through the deoderizer a single time
+        Pass the GlycerideMixture through the deodorizer a single time.
+        Works on a snapshot of current quantities so self.mix is never mutated.
         """
         total_final = 0.0
+        result_quantities = {}
 
-        for component, _ in mix.mix.items():
-
-            Va = mix.mix[component]
+        for component, Va in mix.mix.items():
             A = P / (E * component.vapor_pressure(T))
             V0 = Deodorizer._solve_V0(Va, S, A)
-            # Edit the qty of the current GlycerideMix
-            mix.change_qty(component, V0)
+            result_quantities[component] = V0
             total_final += V0
 
-        mole_fractions = {k: v / total_final for k, v in mix.mix.items()}
-
+        mole_fractions = {k: v / total_final for k, v in result_quantities.items()}
         return (mole_fractions, total_final)
 
+    def plot(self, mix):
+        return
+
+    @staticmethod
     def deodorizer(
-        self,
+        mix: GlycerideMix,
         T: float,               # Temperature, [K]
         P: float,               # System pressure, [Pa]
         E: float = 0.5,         # deodorization efficiency factor
@@ -73,32 +98,40 @@ class Deodorizer:
         sbounds=(1e-6, 5),      # bounds for steam factor S [mol/mol oil]
         tol=1e-6,               # tolerance for bisection method convergence
         nsteps=100,             # number of steps for bisection method
-        verbose=True,           # print results or not
+        verbose=False,          # print results or not
+        plot=False              # plot results or not
     ):
         """
         Perform deodorization on a glyceride mix at a given temperature and pressure.
 
         Parameters:
         -----------
-            mix (GlycerideMix): The glyceride mix to be deodorized.
             T (float): Temperature in Kelvin.
-            P (float): Pressure in atm.
+            P (float): Pressure in Pa.
+            E (float): Deodorization efficiency factor (0–1).
+            target (float): Target fatty acid mole fraction after deodorization.
+            sbounds (tuple): Search bounds for steam factor S [mol steam / mol oil].
+            tol (float): Bisection convergence tolerance.
+            nsteps (int): Maximum bisection iterations.
+            verbose (bool): Print diagnostics.
+            plot (bool): Plot results (not yet implemented).
 
         Returns:
         -----------
-            GlycerideMix: The deodorized glyceride mix.
+            float: Optimal steam factor S_mid.
         """
+        # sbounds must be mutable for bisection
+        sbounds = list(sbounds)
 
         def FA_fraction(S):
-            """
-            report the sum of fatty acids in the final mixture after a single pass with steam factor S
-            """
-            x, (_, _) = self.single_pass(S, T, P, E)
-            return sum(x[name] for name in self.fa_list)
+            """Return the fatty acid mole fraction after a single pass at steam factor S."""
+            x, total_final = Deodorizer.single_pass(mix,S, T, P, E)
+            return sum(x[name] for name in mix.fa_list)
 
-        # use bisection method to find the steam factor S that achieves the target fatty acid fraction
+        S_mid = 0.5 * (sbounds[0] + sbounds[1])
+
+        # Bisection to find the steam factor S that achieves the target FA fraction
         for _ in range(nsteps):
-
             S_mid = 0.5 * (sbounds[0] + sbounds[1])
             FA_mid = FA_fraction(S_mid)
 
@@ -110,24 +143,29 @@ class Deodorizer:
             else:
                 sbounds[1] = S_mid
 
-        final_x, (_, total_final) = self.single_pass(S_mid, T, P, E)
-        initial_total = sum(self.mix.values())
+        final_x, total_final = Deodorizer.single_pass(mix, S_mid, T, P, E)
+
+        # Update self.mix with final quantities
+        for component, frac in final_x.items():
+            mix.mix.change_qty(component, frac * total_final)
+
+        initial_total = sum(mix.mix.values())
 
         if verbose:
             print("\n=== Steam Optimization Results ===")
             print(f"Optimal steam factor S: {S_mid:.6f}")
             print(f"Steam % of oil: {2 * S_mid:.2f}%")
-            print(
-                f"\nFinal fatty acid fraction: {sum(final_x[n] for n in self.fa_list):.6f}"
-            )
+            print(f"\nFinal fatty acid fraction: {sum(final_x[n] for n in mix.fa_list):.6f}")
             print("\nFinal composition:")
             for k, v in final_x.items():
                 print(f"{k:15s} {v:.6f}")
-
             print("\nMaterial balance:")
             print("Initial total moles:", initial_total)
             print("Final total moles:", total_final)
             print("Total removed:", initial_total - total_final)
 
-        # Return ideal steam value
         return S_mid
+
+
+if __name__ == "__main__":
+    """Example usage of the Deodorizer class"""
