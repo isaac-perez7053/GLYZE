@@ -132,16 +132,3 @@ class Deodorizer:
 
 if __name__ == "__main__":
     """Example usage of the Deodorizer class"""
-    mix = GlycerideMix.from_csv("C:\\Users\\oaksh\\Desktop\\GLYZE\\MCT8_10esterification - Sheet1.csv")
-    deodorizer = Deodorizer(mix)
-    optimal_S = deodorizer.deodorizer(
-        T=473.15,  # 200 C
-        P=26.7,  # 200mTorr
-        E=0.5,     # 50% efficiency
-        target=0.001,  # target fatty acid fraction of 0.1%
-        sbounds=(1e-6, 5),  # search steam factor between 0 and 5 mol/mol oil
-        tol=1e-6,
-        nsteps=100,
-        verbose=True,
-        plot=True
-    )
