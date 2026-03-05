@@ -68,7 +68,7 @@ class Deodorizer:
                 return tol
 
     @staticmethod
-    def single_pass(mix: GlycerideMix, S: float, T: float, P: float, E: float):
+    def deodorizer(mix: GlycerideMix, S: float, T: float, P: float, E: float):
         """
         Pass the GlycerideMixture through the deodorizer a single time.
         Works on a snapshot of current quantities so self.mix is never mutated.
@@ -89,7 +89,7 @@ class Deodorizer:
         return
 
     @staticmethod
-    def deodorizer(
+    def opt_deodorizer(
         mix: GlycerideMix,
         T: float,               # Temperature, [K]
         P: float,               # System pressure, [Pa]
@@ -125,8 +125,8 @@ class Deodorizer:
 
         def FA_fraction(S):
             """Return the fatty acid mole fraction after a single pass at steam factor S."""
-            x, total_final = Deodorizer.single_pass(mix,S, T, P, E)
-            return sum(x[name] for name in mix.fa_list)
+            x, total_final = Deodorizer.deodorizer(mix,S, T, P, E)
+            return sum(x.get(fa, 0.0) for fa in mix.fa_list)
 
         S_mid = 0.5 * (sbounds[0] + sbounds[1])
 
@@ -143,13 +143,14 @@ class Deodorizer:
             else:
                 sbounds[1] = S_mid
 
-        final_x, total_final = Deodorizer.single_pass(mix, S_mid, T, P, E)
+        final_x, total_final = Deodorizer.deodorizer(mix, S_mid, T, P, E)
+
+        initial_total = sum(mix.mix.values())
 
         # Update self.mix with final quantities
         for component, frac in final_x.items():
-            mix.mix.change_qty(component, frac * total_final)
-
-        initial_total = sum(mix.mix.values())
+            mix.change_qty(component, frac * total_final)
+        
 
         if verbose:
             print("\n=== Steam Optimization Results ===")
@@ -158,7 +159,7 @@ class Deodorizer:
             print(f"\nFinal fatty acid fraction: {sum(final_x[n] for n in mix.fa_list):.6f}")
             print("\nFinal composition:")
             for k, v in final_x.items():
-                print(f"{k:15s} {v:.6f}")
+                print(f"{k.name:15s} {v:.6f}")
             print("\nMaterial balance:")
             print("Initial total moles:", initial_total)
             print("Final total moles:", total_final)
