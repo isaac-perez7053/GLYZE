@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 from typing import Dict, List, Tuple
-from glyze.glyceride import Glyceride, FattyAcid, SymmetricGlyceride, FattyAcid
+from glyze.glyceride import Glyceride, FattyAcid, SymmetricGlyceride
 from ordered_set import OrderedSet
 from .p_kinetic_sim import PKineticSim
 from glyze.utils import add_rxn
@@ -14,7 +14,91 @@ CM3_PER_A3 = 1e-24
 class Interesterifier:
 
     @staticmethod
-    def p_kinetic_intersterification_rxn_list(
+    def _normalized_choice(value: str) -> str:
+        value = str(value).strip().lower()
+        if value not in {"end", "mid"}:
+            raise ValueError(f"Expected 'end' or 'mid', got {value!r}")
+        return value
+
+    @staticmethod
+    def _pluck_records(
+        list_of_glycerides: List[Glyceride],
+        plucked: List[str],
+        arranged: List[str],
+    ):
+        if len(plucked) != len(list_of_glycerides) or len(arranged) != len(list_of_glycerides):
+            raise ValueError("plucked and arranged must have the same length as list_of_glycerides")
+
+        unique_dags = OrderedSet()
+        dag_lookup: Dict[Tuple[str, int], Tuple[str, SymmetricGlyceride]] = {}
+        mid: List[FattyAcid] = []
+        end: List[FattyAcid] = []
+        removal_records = []
+
+        for i, tag in enumerate(list_of_glycerides):
+            plucked_i = Interesterifier._normalized_choice(plucked[i])
+            arranged_i = Interesterifier._normalized_choice(arranged[i])
+
+            if not isinstance(tag, Glyceride):
+                continue
+
+            occupied = [idx for idx, fa in enumerate(tag.sn) if fa is not None]
+            if not occupied:
+                continue
+
+            if plucked_i == "mid":
+                candidate_indices = [1] if tag.sn[1] is not None else []
+            else:
+                candidate_indices = [idx for idx in (0, 2) if tag.sn[idx] is not None]
+
+            for idx in candidate_indices:
+                dag, fa = tag.remove_fatty_acid(index=idx)
+                unique_dags.add(dag)
+                dag_lookup[(tag.name, idx)] = (fa.name, dag)
+                removal_records.append(
+                    {
+                        "tag": tag,
+                        "idx": idx,
+                        "fa": fa,
+                        "dag": dag,
+                        "plucked": plucked_i,
+                        "arranged": arranged_i,
+                    }
+                )
+                if arranged_i == "end":
+                    end.append(fa)
+                else:
+                    mid.append(fa)
+
+        return unique_dags, dag_lookup, removal_records, mid, end
+
+    @staticmethod
+    def _build_tg_lookup(unique_dags, removal_records, mid, end):
+        unique_tgs = OrderedSet()
+        tg_lookup: Dict[Tuple[str, str], SymmetricGlyceride] = {}
+
+        for dag in unique_dags:
+            if dag.sn[1] is None:
+                for fa in mid:
+                    tg1 = dag.add_fatty_acid(index=1, fatty_acid=fa)
+                    unique_tgs.add(tg1)
+                    tg_lookup[(dag.name, fa.name)] = tg1
+            else:
+                for fa in end:
+                    empty_ends = [idx for idx in (0, 2) if dag.sn[idx] is None]
+                    if not empty_ends:
+                        raise ValueError("Unexpected glyceride structure: no empty end position available.")
+                    tg1 = dag.add_fatty_acid(index=empty_ends[0], fatty_acid=fa)
+                    unique_tgs.add(tg1)
+                    tg_lookup[(dag.name, fa.name)] = tg1
+
+        for rec in removal_records:
+            tg_lookup[(rec["dag"].name, rec["fa"].name)] = rec["tag"]
+
+        return unique_tgs, tg_lookup
+
+    @staticmethod
+    def interesterification_rxn_list(
         list_of_glycerides: List[Glyceride],
         plucked: List[str],
         arranged: List[str],
@@ -31,105 +115,37 @@ class Interesterifier:
         Returns:
             List[str]: A list of chemical reaction equations present in the simulation
         """
-        # Build all unique species once, and REUSE them when building reactions
-        unique_dags = OrderedSet()
-        dag_lookup: Dict[Tuple[str, int], Tuple[str, SymmetricGlyceride]] = (
-            {}
-        )  # (gly.name, fa.name, index) -> DAG + fatty acid
         list_of_rxns = []
+        init_ks = []
 
-        # list of fatty acids that can only react to either the ends or the middles
-        mid: List[FattyAcid] = []
-        end: List[FattyAcid] = []
+        unique_dags, dag_lookup, removal_records, mid, end = Interesterifier._pluck_records(
+            list_of_glycerides, plucked, arranged
+        )
+        unique_tgs, tg_lookup = Interesterifier._build_tg_lookup(unique_dags, removal_records, mid, end)
 
-        for i in range(len(list_of_glycerides)):
-            tag = list_of_glycerides[i]
-            fa0, fa1, fa2 = tag.sn
-            if plucked[i] == "end":
-                dag0, _ = tag.remove_fatty_acid(index=0)  # G_None_FA_FA
-                dag2, _ = tag.remove_fatty_acid(index=2)  # G_FA_FA_None
-                unique_dags.add(dag0)
-                unique_dags.add(dag2)
-                dag_lookup[(tag.name, 0)] = (fa0.name, dag0)
-                dag_lookup[(tag.name, 2)] = (fa2.name, dag2)
-                # if the arrangement goes to the end or the middle (sorting)
-                if arranged[i] == "end":
-                    end.append(fa0)
-                    end.append(fa2)
-                else:
-                    mid.append(fa0)
-                    mid.append(fa2)
-            else:  # its mid
-                dag1, _ = tag.remove_fatty_acid(index=1)  # G_FA_None_FA
-                unique_dags.add(dag1)
-                dag_lookup[(tag.name, 1)] = (fa1.name, dag1)
-                if arranged[i] == "end":
-                    end.append(fa1)
-                else:
-                    mid.append(fa1)
-
-        unique_tgs = OrderedSet()
-        tg_lookup: Dict[Tuple[str, str], SymmetricGlyceride] = (
-            {}
-        )  # (dag.name, fa.name) -> TG
-
-        for dag in unique_dags:
-            if dag.sn[1] is None:
-                for fa in mid:
-                    # if the middle is empty
-                    tg1 = dag.add_fatty_acid(index=1, fatty_acid=fa)
-                    unique_tgs.add(tg1)
-                    tg_lookup[(dag.name, fa.name)] = tg1
-            else:
-                # or its not and so the ends must be empty
-                for fa in end:
-                    if dag.sn[0] is None:
-                        tg1 = dag.add_fatty_acid(index=0, fatty_acid=fa)
-                        unique_tgs.add(tg1)
-                        tg_lookup[(dag.name, fa.name)] = tg1
-                    elif dag.sn[2] is None:
-                        tg1 = dag.add_fatty_acid(index=2, fatty_acid=fa)
-                        unique_tgs.add(tg1)
-                        tg_lookup[(dag.name, fa.name)] = tg1
-                    else:
-                        raise ValueError("Unexpected diglyceride structure")
-
-        for i in range(len(list_of_glycerides)):
-            if plucked[i] == arranged[i]:
-                dag, fa = tag.remove_fatty_acid(index=1)
-                tg_lookup[(dag.name, fa.name)] = list_of_glycerides[i]
-            else:
-                dag0, fa0 = tag.remove_fatty_acid(index=0)
-                dag2, fa2 = tag.remove_fatty_acid(index=2)
-                tg_lookup[(dag0.name, fa0.name)] = list_of_glycerides[i]
-                tg_lookup[(dag2.name, fa2.name)] = list_of_glycerides[i]
-
-        # build reaction names
-        for i, tag in enumerate(list_of_glycerides):
-            plucked_value = plucked[i]
-            if plucked_value == "end":
-                fa0, dag0 = dag_lookup[(tag.name, 0)]
-                fa2, dag2 = dag_lookup[(tag.name, 2)]
-                list_of_rxns.append(f"{tag.name} => {dag0.name} + {fa0}")
-                list_of_rxns.append(f"{tag.name} => {dag2.name} + {fa2}")
-            else:
-                fa1, dag1 = dag_lookup[(tag.name, 1)]
-                list_of_rxns.append(f"{tag.name} => {dag1.name} + {fa1}")
+        for rec in removal_records:
+            fa_name, dag = dag_lookup[(rec["tag"].name, rec["idx"])]
+            list_of_rxns.append(f"{rec['tag'].name} => {dag.name} + {fa_name}")
+            init_ks.append(1.0)
 
         for dag in unique_dags:
             if dag.sn[1] is not None:
+                empty_end_count = sum(1 for idx in (0, 2) if dag.sn[idx] is None)
+                k_default = float(max(empty_end_count, 1))
                 for fa in end:
                     tg1 = tg_lookup[(dag.name, fa.name)].name
                     list_of_rxns.append(f"{dag.name} + {fa.name} => {tg1}")
+                    init_ks.append(k_default)
             else:
                 for fa in mid:
                     tg1 = tg_lookup[(dag.name, fa.name)].name
                     list_of_rxns.append(f"{dag.name} + {fa.name} => {tg1}")
+                    init_ks.append(1.0)
 
-        return list_of_rxns
+        return list_of_rxns, init_ks
 
     @staticmethod
-    def p_kinetic_interesterification(
+    def interesterification(
         list_of_glycerides: List[Glyceride],
         initial_conc: List[int],
         plucked: List[str],
@@ -148,155 +164,48 @@ class Interesterifier:
         Returns:
             PKineticSimulation: runs the graph to see what TAGs will be left
         """
-        #
         react_stoic = []
         prod_stoic = []
         rxn_names: List[str] = []
         ks_internal = []
 
-        # First break TAGs and form DAGs and FAs
-
-        if ks is not None:
-            if len(ks) != len(
-                Interesterifier.p_kinetic_intersterification_rxn_list(
-                    list_of_glycerides, arranged, plucked
-                )
-            ):
-                raise ValueError("Make sure that you input the correct number of ks!")
-
         if len(initial_conc) != len(list_of_glycerides):
-            raise ValueError("initial_conc must have the same length as list_of_fa")
+            raise ValueError("initial_conc must have the same length as list_of_glycerides")
 
-            # Build all unique species once, and REUSE them when building reactions
-        unique_dags = OrderedSet()
-        dag_lookup: Dict[Tuple[str, int], Tuple[str, SymmetricGlyceride]] = (
-            {}
-        )  # (gly.name, fa.name, index) -> DAG + fatty acid
-
-        # list of fatty acids that can only react to either the ends or the middles
-        mid: List[FattyAcid] = []
-        end: List[FattyAcid] = []
-
-        for i in range(len(list_of_glycerides)):
-            tag = list_of_glycerides[i]
-            fa0, fa1, fa2 = tag.sn
-            if plucked[i] == "end":
-                dag0, _ = tag.remove_fatty_acid(index=0)  # G_None_FA_FA
-                dag2, _ = tag.remove_fatty_acid(index=2)  # G_FA_FA_None
-                unique_dags.add(dag0)
-                unique_dags.add(dag2)
-                dag_lookup[(tag.name, 0)] = (fa0.name, dag0)
-                dag_lookup[(tag.name, 2)] = (fa2.name, dag2)
-                # if the arrangement goes to the end or the middle (sorting)
-                if arranged[i] == "end":
-                    end.append(fa0)
-                    end.append(fa2)
-                else:
-                    mid.append(fa0)
-                    mid.append(fa2)
-            else:  # its mid
-                dag1, _ = tag.remove_fatty_acid(index=1)  # G_FA_None_FA
-                unique_dags.add(dag1)
-                dag_lookup[(tag.name, 1)] = (fa1.name, dag1)
-                if arranged[i] == "end":
-                    end.append(fa1)
-                else:
-                    mid.append(fa1)
-
-        unique_tgs = OrderedSet()
-        tg_lookup: Dict[Tuple[str, str], SymmetricGlyceride] = (
-            {}
-        )  # (dag.name, fa.name) -> TG
-
-        for dag in unique_dags:
-            if dag.sn[1] is None:
-                for fa in mid:
-                    # if the middle is empty
-                    tg1 = dag.add_fatty_acid(index=1, fatty_acid=fa)
-                    unique_tgs.add(tg1)
-                    tg_lookup[(dag.name, fa.name)] = tg1
-            else:
-                # or its not and so the ends must be empty
-                for fa in end:
-                    if dag.sn[0] is None:
-                        tg1 = dag.add_fatty_acid(index=0, fatty_acid=fa)
-                        unique_tgs.add(tg1)
-                        tg_lookup[(dag.name, fa.name)] = tg1
-                    elif dag.sn[2] is None:
-                        tg1 = dag.add_fatty_acid(index=2, fatty_acid=fa)
-                        unique_tgs.add(tg1)
-                        tg_lookup[(dag.name, fa.name)] = tg1
-                    else:
-                        raise ValueError("Unexpected diglyceride structure")
-
-        for i in range(len(list_of_glycerides)):
-            if plucked[i] == arranged[i]:
-                dag, fa = tag.remove_fatty_acid(index=1)
-                tg_lookup[(dag.name, fa.name)] = list_of_glycerides[i]
-            else:
-                dag0, fa0 = tag.remove_fatty_acid(index=0)
-                dag2, fa2 = tag.remove_fatty_acid(index=2)
-                tg_lookup[(dag0.name, fa0.name)] = list_of_glycerides[i]
-                tg_lookup[(dag2.name, fa2.name)] = list_of_glycerides[i]
+        unique_dags, dag_lookup, removal_records, mid, end = Interesterifier._pluck_records(
+            list_of_glycerides, plucked, arranged
+        )
+        unique_tgs, tg_lookup = Interesterifier._build_tg_lookup(unique_dags, removal_records, mid, end)
 
         unique_species = list(OrderedSet.union(unique_dags, unique_tgs))
-        midend = OrderedSet(mid + end)  # Combine the two lists together
-        init_tags = [init_tags.name for init_tags in list_of_glycerides]
+        midend = OrderedSet(mid + end)
+        init_tags = [init_tag.name for init_tag in list_of_glycerides if isinstance(init_tag, Glyceride)]
         fa_names = [fa.name for fa in midend]
         gly_names = [specie.name for specie in unique_species]
         species_names = [*fa_names, *OrderedSet(gly_names + init_tags)]
         species_idx = {nm: i for i, nm in enumerate(species_names)}
-
         ns = len(species_names)
 
-        # build reaction names
-        for i, tag in enumerate(list_of_glycerides):
-            plucked_value = plucked[i]
-            if plucked_value == "end":
-                fa0, dag0 = dag_lookup[(tag.name, 0)]
-                fa2, dag2 = dag_lookup[(tag.name, 2)]
-                dag0 = dag0.name
-                dag2 = dag2.name
-                add_rxn(
-                    react_stoic,
-                    prod_stoic,
-                    rxn_names,
-                    ks_internal,
-                    species_idx,
-                    reactants=[tag.name],
-                    products=[dag0, fa0],
-                    k=(ks.pop(0) if ks is not None else 1.0),
-                    name=f"{tag.name} => {dag0} + {fa0}",
-                )
-                add_rxn(
-                    react_stoic,
-                    prod_stoic,
-                    rxn_names,
-                    ks_internal,
-                    species_idx,
-                    reactants=[tag.name],
-                    products=[dag2, fa2],
-                    k=(ks.pop(0) if ks is not None else 1.0),
-                    name=f"{tag.name} => {dag2} + {fa2}",
-                )
-            else:
-                fa1, dag1 = dag_lookup[(tag.name, 1)]
-                dag1 = dag1.name
-                add_rxn(
-                    react_stoic,
-                    prod_stoic,
-                    rxn_names,
-                    ks_internal,
-                    species_idx,
-                    reactants=[tag.name],
-                    products=[dag1, fa1],
-                    k=(ks.pop(0) if ks is not None else 1.0),
-                    name=f"{tag.name} => {dag1} + {fa1}",
-                )
+        ks_working = list(ks) if ks is not None else None
 
-        # Build TG reactions (reuse prebuilt TGs)
+        for rec in removal_records:
+            fa_name, dag = dag_lookup[(rec["tag"].name, rec["idx"])]
+            add_rxn(
+                react_stoic,
+                prod_stoic,
+                rxn_names,
+                ks_internal,
+                species_idx,
+                reactants=[rec["tag"].name],
+                products=[dag.name, fa_name],
+                k=(ks_working.pop(0) if ks_working is not None else 1.0),
+                name=f"{rec['tag'].name} => {dag.name} + {fa_name}",
+            )
+
         for dag in unique_dags:
             if dag.sn[1] is not None:
+                empty_end_count = sum(1 for idx in (0, 2) if dag.sn[idx] is None)
+                k_default = float(max(empty_end_count, 1))
                 for fa in end:
                     tg1 = tg_lookup[(dag.name, fa.name)].name
                     add_rxn(
@@ -307,7 +216,7 @@ class Interesterifier:
                         species_idx,
                         reactants=[dag.name, fa.name],
                         products=[tg1],
-                        k=(ks.pop(0) if ks is not None else 2.0),
+                        k=(ks_working.pop(0) if ks_working is not None else k_default),
                         name=f"{dag.name} + {fa.name} => {tg1}",
                     )
             else:
@@ -321,16 +230,15 @@ class Interesterifier:
                         species_idx,
                         reactants=[dag.name, fa.name],
                         products=[tg1],
-                        k=(ks.pop(0) if ks is not None else 1.0),
+                        k=(ks_working.pop(0) if ks_working is not None else 1.0),
                         name=f"{dag.name} + {fa.name} => {tg1}",
                     )
 
-        # Initial state vector
         init_state = np.zeros(len(species_names), dtype=float)
         for gly, c0 in zip(list_of_glycerides, initial_conc[0:]):
-            init_state[species_idx[gly.name]] = float(c0)
+            if isinstance(gly, Glyceride):
+                init_state[species_idx[gly.name]] = float(c0)
 
-        # Convert list of column vectors into full (ns, nr) matrices
         react_stoic = (
             np.hstack(react_stoic)
             if len(react_stoic)

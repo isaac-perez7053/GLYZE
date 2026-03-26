@@ -5,9 +5,6 @@ import plotly.graph_objects as go
 
 class Deodorizer:
 
-    def __init__(self, mix: GlycerideMix):
-        self.mix = mix
-
     @staticmethod
     def _solve_V0(Va, S, A, tol=1e-12, maxiter=100):
         if Va == 0:
@@ -35,7 +32,8 @@ class Deodorizer:
             except ValueError:
                 raise ValueError(f"_solve_V0 failed to bracket a root for Va={Va}, S={S}, A={A}")
 
-    def single_pass(self, S: float, T: float, P: float, E: float):
+    @staticmethod
+    def single_pass(mix: GlycerideMix, S: float, T: float, P: float, E: float):
         """
         Pass the GlycerideMixture through the deodorizer a single time.
         Works on a snapshot of current quantities so self.mix is never mutated.
@@ -43,7 +41,7 @@ class Deodorizer:
         total_final = 0.0
         result_quantities = {}
 
-        for component, Va in self.mix.mix.items():
+        for component, Va in mix.mix.items():
             A = P / (E * component.vapor_pressure(T))
             V0 = Deodorizer._solve_V0(Va, S, A)
             result_quantities[component] = V0
@@ -54,8 +52,10 @@ class Deodorizer:
 
     def plot(self, mix):
         return
+    
+    @staticmethod
     def deodorizer(
-        self,
+        mix: GlycerideMix,
         T: float,               # Temperature, [K]
         P: float,               # System pressure, [Pa]
         E: float = 0.5,         # deodorization efficiency factor
@@ -84,9 +84,9 @@ class Deodorizer:
             """
             report the sum of fatty acids in the final mixture after a single pass with steam factor S
             """
-            x, total_final = self.single_pass(S, T, P, E)
+            x, _ = Deodorizer.single_pass(mix, S, T, P, E)
             
-            return sum(x[name] for name in self.fa_list)
+            return sum(x[name] for name in mix.fa_list)
 
         # use bisection method to find the steam factor S that achieves the target fatty acid fraction
         for _ in range(nsteps):
@@ -102,20 +102,19 @@ class Deodorizer:
             else:
                 sbounds[1] = S_mid
 
-        final_x,  total_final = self.single_pass(S_mid, T, P, E)
+        final_x,  total_final = Deodorizer.single_pass(mix, S_mid, T, P, E)
         
         # Update self.mix with final quantities
         for component, frac in final_x.items():
-            self.mix.change_qty(component, frac * total_final)
-
-        initial_total = sum(self.mix.values())
+            mix.change_qty(component, frac * total_final)
+        initial_total = sum(mix.mix.values())
 
         if verbose:
             print("\n=== Steam Optimization Results ===")
             print(f"Optimal steam factor S: {S_mid:.6f}")
             print(f"Steam % of oil: {2 * S_mid:.2f}%")
             print(
-                f"\nFinal fatty acid fraction: {sum(final_x[n] for n in self.fa_list):.6f}"
+                f"\nFinal fatty acid fraction: {sum(final_x[n] for n in mix.fa_list):.6f}"
             )
             print("\nFinal composition:")
             for k, v in final_x.items():

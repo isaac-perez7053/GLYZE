@@ -185,7 +185,7 @@ st.markdown(
             <div class="butter-badge">🧈</div>
         </div>
         <div class="glyze-tagline">
-            Glyceride and Lipid sYnthetiZation Engine — model, simulate, and calculate lipid workflows in one place.
+            Glyceride and Lipid sYnthetiZation Engine
         </div>
     </div>
     <div class="glyze-divider"></div>
@@ -197,27 +197,27 @@ st.markdown(
 st.markdown('<div class="glyze-card">', unsafe_allow_html=True)
 
 st.markdown(
-    '<div class="start-title">Where do you want to start?</div>', unsafe_allow_html=True
+    '<div class="start-title"></div>', unsafe_allow_html=True
 )
-st.markdown(
-    '<div class="start-subtitle">Choose a module to launch. You can always return here from the sidebar.</div>',
-    unsafe_allow_html=True,
-)
+
 
 col1, col2 = st.columns(2, gap="large")
 
 with col1:
-    if st.button("⚗️  Batch Reactor", use_container_width=True):
-        st.switch_page("pages/batch_reactor_ui.py")
+    if st.button("Batch Reactor", use_container_width=True):
+        st.switch_page("pages/Batch_Reactor.py")
 
-    if st.button("🧪  Viscosity Model", use_container_width=True):
-        st.switch_page("pages/viscosity_model_ui.py")
+    if st.button("Viscosity Model", use_container_width=True):
+        st.switch_page("pages/Viscosity_Model.py")
 
 with col2:
-    if st.button("🧼  Deoderizor", use_container_width=True):
-        st.switch_page("pages/deoderizor_ui.py")
+    if st.button("Deodorizer", use_container_width=True):
+        st.switch_page("pages/Deodorizer.py")
 
-    if st.button("📈  SFC Calculator", use_container_width=True):
-        st.switch_page("pages/sfc_calculator_ui.py")
+    if st.button("SFC Calculator", use_container_width=True):
+        st.switch_page("pages/SFC_Calculator.py")
+
+if st.button("Glyceride Mix Editor", use_container_width=True):
+    st.switch_page("pages/Glyceride_Mix.py")
 
 st.markdown("</div>", unsafe_allow_html=True)

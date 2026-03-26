@@ -6,6 +6,7 @@ from rdkit.Chem import AllChem
 import copy
 from pathlib import Path
 import numpy as np
+from functools import cached_property
 
 # Fragment values
 DELTA_H_MAG = 41.73
@@ -261,7 +262,7 @@ class FattyAcid:
         branches = tuple(sorted((int(p), str(lbl)) for p, lbl in self.branches))
         return FattyAcid(self.length, positions, stereo, branches)
 
-    def to_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
+    def _build_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
         """
         Convert the fatty acid to an RDKit molecule.
 
@@ -337,7 +338,18 @@ class FattyAcid:
             mol = _optimize_mol(mol, confId=-1)
         return mol
 
-    @property
+    @cached_property
+    def _cached_rdkit_mol(self) -> Chem.Mol:
+        return self._build_rdkit_mol(optimize=False)
+
+    @cached_property
+    def _cached_optimized_rdkit_mol(self) -> Chem.Mol:
+        return self._build_rdkit_mol(optimize=True)
+
+    def to_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
+        return Chem.Mol(self._cached_optimized_rdkit_mol if optimize else self._cached_rdkit_mol)
+
+    @cached_property
     def molar_mass(self) -> float:
         """Calculate the molar mass of the fatty acid in g/mol"""
         # Build RDkit molecule and sum atomic masses
@@ -400,10 +412,25 @@ class FattyAcid:
 
 class Glyceride:
     """
-    Description of a glyceride (diacylglyceride if a chain is None)
+    Description of a glyceride 
 
-    sn: tuple of three Optional[FattyAcid] in sn-1, sn-2, sn-3 order.
+    Attributes:
+    -----------
+    sn (Tuple[Optional[FattyAcid], Optional[FattyAcid], Optional[FattyAcid]]): tuple of three Optional[FattyAcid] in sn-1, sn-2, sn-3 order.
         Use None for an emtpy chain (e.g. diacylglyceride embedding).
+
+    Class Methods:
+    --------------
+    from_name: Create a Glyceride usign the naming scheme    
+
+    Methods:
+    --------
+    add_fatty_acid: Add a fatty acid to the glyceride and return a deepcopy of the new glyceride.
+
+
+    Properties:
+    -----------
+    molar_mass (float): Calculate the molar mass of a glyceride in g/mol
     """
 
     def __init__(
@@ -413,7 +440,6 @@ class Glyceride:
         if len(self.sn) != 3:
             raise ValueError("sn must have length 3 (sn-1, sn-2, sn-3)")
 
-    # TODO: Validate from_name and make sure to canonicalize stereochemical names in name
     @classmethod
     def from_name(cls, name: str) -> "Glyceride":
         """
@@ -479,11 +505,13 @@ class Glyceride:
         Add a fatty acid to the glyceride and return a deepcopy of the new glyceride.
 
         Paramters:
+        ----------
             index (int): Index (0, 1, or 2) to add the fatty acid to.
             fatty_acid (FattyAcid): The fatty acid to add.
             deep_copy (bool): Whether to perform a deep copy of the glyceride.
 
         Returns:
+        --------
             Glyceride: A new Glyceride instance with the added fatty acid.
         """
         if index not in (0, 1, 2):
@@ -573,7 +601,7 @@ class Glyceride:
         print(f"PDB file created at: {pdb_filepath}")
         return pdb_filepath
 
-    def to_rdkit_mol(self, optimize: bool = True) -> Chem.Mol:
+    def _build_rdkit_mol(self, optimize: bool = True) -> Chem.Mol:
         """
         Build an RDKit molecule for the given Glyceride, embed in 3D, and relax.
         Uses kwargs-only ETKDG (ETversion=2) for compatibility with your RDKit.
@@ -603,6 +631,20 @@ class Glyceride:
             mol = _optimize_mol(mol, confId=-1)
 
         return mol
+
+    def to_rdkit_mol(self, optimize: bool = True) -> Chem.Mol:
+        if optimize:
+            cached = getattr(self, "_cached_optimized_rdkit_mol", None)
+            if cached is None:
+                cached = self._build_rdkit_mol(optimize=True)
+                self._cached_optimized_rdkit_mol = cached
+            return Chem.Mol(cached)
+
+        cached = getattr(self, "_cached_rdkit_mol", None)
+        if cached is None:
+            cached = self._build_rdkit_mol(optimize=False)
+            self._cached_rdkit_mol = cached
+        return Chem.Mol(cached)
 
     def rdkit_mol_to_gaussian_gjf(
         self,
@@ -800,11 +842,14 @@ class Glyceride:
     @property
     def molar_mass(self) -> float:
         """Calculate the molar mass of a glyceride in g/mol"""
-        mol = self.to_rdkit_mol()
-        mass = 0
-        for atom in mol.GetAtoms():
-            mass += atom.GetMass()
-        return mass
+        cached = getattr(self, "_cached_molar_mass", None)
+        if cached is None:
+            mol = self.to_rdkit_mol(optimize=False)
+            cached = 0
+            for atom in mol.GetAtoms():
+                cached += atom.GetMass()
+            self._cached_molar_mass = cached
+        return cached
 
     @property
     def num_fatty_acids(self) -> int:

@@ -1,419 +1,420 @@
 import io
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 import streamlit as st
-
-from glyze.glyceride import Glyceride, FattyAcid
+import tempfile
+from glyze.glyceride import FattyAcid, Glyceride
 from glyze.glyceride_mix import GlycerideMix
 
 
 st.set_page_config(page_title="GLYZE — Glyceride Mix", page_icon="🧈", layout="wide")
 
-# Reuse the exact style from home.py
-st.markdown(
-    """
-    <style>
-    :root{
-        --accentA:#2563EB;
-        --accentB:#7C3AED;
-        --text:#0F172A;
-        --muted:#475569;
-        --border:rgba(15,23,42,0.12);
-    }
 
-    .stApp{
-        background:
-            radial-gradient(1100px circle at 15% 0%, rgba(255,237,213,0.60) 0%, rgba(255,237,213,0) 55%),
-            radial-gradient(900px circle at 90% 10%, rgba(219,234,254,0.70) 0%, rgba(219,234,254,0) 55%),
-            #ffffff;
-        color:var(--text);
-    }
+PAGE_CSS = """
+<style>
+:root{
+    --accentA:#2563EB;
+    --accentB:#7C3AED;
+    --text:#0F172A;
+    --muted:#475569;
+    --border:rgba(15,23,42,0.12);
+}
 
-    section.main > div{
-        max-width: 1320px;   /* was 920px on home */
-        padding-top: 1.2rem;
-        padding-bottom: 2.8rem;
-    }
+.stApp{
+    background:
+        radial-gradient(1100px circle at 15% 0%, rgba(255,237,213,0.60) 0%, rgba(255,237,213,0) 55%),
+        radial-gradient(900px circle at 90% 10%, rgba(219,234,254,0.70) 0%, rgba(219,234,254,0) 55%),
+        #ffffff;
+    color:var(--text);
+}
 
-    .glyze-card{
-        padding: 1.4rem 1.6rem; /* slightly roomier */
-    }
+section.main > div{
+    max-width: 1320px;   /* was 920px on home */
+    padding-top: 1.2rem;
+    padding-bottom: 2.8rem;
+}
 
-    .center{ text-align:center; }
+.glyze-card{
+    padding: 1.4rem 1.6rem; /* slightly roomier */
+}
 
-    /* ---- Hero ---- */
-    .glyze-hero{ margin-top:0.2rem; margin-bottom:0.6rem; }
+.center{ text-align:center; }
 
-    .glyze-logo{
-        display:inline-flex;
-        align-items:center;
-        gap:12px;
-        padding:10px 14px;
-        border-radius:999px;
-        border:1px solid rgba(15,23,42,0.08);
-        background:rgba(255,255,255,0.65);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
-        box-shadow:0 10px 24px rgba(15,23,42,0.06);
-    }
+/* ---- Hero ---- */
+.glyze-hero{ margin-top:0.2rem; margin-bottom:0.6rem; }
 
-    .glyze-word{
-        font-weight:900;
-        letter-spacing:0.02em;
-        font-size:2.2rem;
-        line-height:1.0;
-        background:linear-gradient(90deg, #0F172A 0%, #1D4ED8 55%, #7C3AED 100%);
-        -webkit-background-clip:text;
-        background-clip:text;
-        color:transparent;
-        margin:0;
-    }
+.glyze-logo{
+    display:inline-flex;
+    align-items:center;
+    gap:12px;
+    padding:10px 14px;
+    border-radius:999px;
+    border:1px solid rgba(15,23,42,0.08);
+    background:rgba(255,255,255,0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow:0 10px 24px rgba(15,23,42,0.06);
+}
 
-    .butter-badge{
-        width:42px; height:42px;
-        border-radius:14px;
-        display:grid; place-items:center;
-        background:linear-gradient(145deg, rgba(255,237,213,0.95), rgba(219,234,254,0.85));
-        border:1px solid rgba(15,23,42,0.08);
-        box-shadow:0 10px 22px rgba(15,23,42,0.08);
-        font-size:20px;
-    }
+.glyze-word{
+    font-weight:900;
+    letter-spacing:0.02em;
+    font-size:2.2rem;
+    line-height:1.0;
+    background:linear-gradient(90deg, #0F172A 0%, #1D4ED8 55%, #7C3AED 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+    margin:0;
+}
 
-    .glyze-tagline{
-        margin:0.65rem auto 0.2rem auto;
-        max-width:64ch;
-        color:var(--muted);
-        font-size:1.0rem;
-    }
+.butter-badge{
+    width:42px; height:42px;
+    border-radius:14px;
+    display:grid; place-items:center;
+    background:linear-gradient(145deg, rgba(255,237,213,0.95), rgba(219,234,254,0.85));
+    border:1px solid rgba(15,23,42,0.08);
+    box-shadow:0 10px 22px rgba(15,23,42,0.08);
+    font-size:20px;
+}
 
-    /* ---- Divider ---- */
-    .glyze-divider{
-        width: min(640px, 92%);
-        height: 1px;
-        margin: 1.1rem auto 1.0rem auto;
-        background: linear-gradient(to right,
-            rgba(15,23,42,0),
-            rgba(15,23,42,0.20),
-            rgba(15,23,42,0)
-        );
-        border-radius:999px;
-        position:relative;
-    }
-    .glyze-divider:after{
-        content:"";
-        position:absolute;
-        left:50%;
-        top:50%;
-        transform:translate(-50%,-50%);
-        width:10px;
-        height:10px;
-        border-radius:999px;
-        background: rgba(255,255,255,0.9);
-        border: 1px solid rgba(15,23,42,0.14);
-        box-shadow: 0 6px 16px rgba(15,23,42,0.08);
-    }
+.glyze-tagline{
+    margin:0.65rem auto 0.2rem auto;
+    max-width:64ch;
+    color:var(--muted);
+    font-size:1.0rem;
+}
 
-    /* ---- Card ---- */
-    .glyze-card{
-        background: rgba(255,255,255,0.78);
-        border: 1px solid rgba(15,23,42,0.10);
-        border-radius: 20px;
-        padding: 1.25rem 1.35rem;
-        box-shadow: 0 18px 40px rgba(15,23,42,0.08);
-        backdrop-filter: blur(7px);
-        -webkit-backdrop-filter: blur(7px);
-        margin-top: 0.9rem;
-    }
+/* ---- Divider ---- */
+.glyze-divider{
+    width: min(640px, 92%);
+    height: 1px;
+    margin: 1.1rem auto 1.0rem auto;
+    background: linear-gradient(to right,
+        rgba(15,23,42,0),
+        rgba(15,23,42,0.20),
+        rgba(15,23,42,0)
+    );
+    border-radius:999px;
+    position:relative;
+}
+.glyze-divider:after{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    width:10px;
+    height:10px;
+    border-radius:999px;
+    background: rgba(255,255,255,0.9);
+    border: 1px solid rgba(15,23,42,0.14);
+    box-shadow: 0 6px 16px rgba(15,23,42,0.08);
+}
 
-    .start-title{
-        text-align:center;
-        font-size:1.65rem;
-        font-weight:800;
-        margin:0.2rem 0 0.25rem 0;
-        color:var(--text);
-    }
-    .start-subtitle{
-        text-align:center;
-        color:var(--muted);
-        margin-bottom:0.85rem;
-    }
+/* ---- Card ---- */
+.glyze-card{
+    background: rgba(255,255,255,0.78);
+    border: 1px solid rgba(15,23,42,0.10);
+    border-radius: 20px;
+    padding: 1.25rem 1.35rem;
+    box-shadow: 0 18px 40px rgba(15,23,42,0.08);
+    backdrop-filter: blur(7px);
+    -webkit-backdrop-filter: blur(7px);
+    margin-top: 0.9rem;
+}
 
-    /* ---- Buttons ---- */
-    div.stButton > button{
-        width: 100%;
-        border-radius: 16px !important;
-        padding: 0.95rem 1.05rem !important;
-        font-weight: 750 !important;
+.start-title{
+    text-align:center;
+    font-size:1.65rem;
+    font-weight:800;
+    margin:0.2rem 0 0.25rem 0;
+    color:var(--text);
+}
+.start-subtitle{
+    text-align:center;
+    color:var(--muted);
+    margin-bottom:0.85rem;
+}
 
-        background: rgba(255,255,255,0.88) !important;
-        color: var(--text) !important;
-
-        border: 1px solid var(--border) !important;
-        box-shadow: 0 10px 20px rgba(15,23,42,0.06);
-        transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, filter 120ms ease;
-    }
-
-    div.stButton > button:hover{
-        transform: translateY(-1px);
-        background: linear-gradient(90deg, var(--accentA), var(--accentB)) !important;
-        color: #ffffff !important;
-        border-color: rgba(255,255,255,0.20) !important;
-        box-shadow: 0 18px 35px rgba(37, 99, 235, 0.22);
-        filter: brightness(1.02);
-    }
-
-    div.stButton > button:active{
-        transform: translateY(0px);
-        box-shadow: 0 10px 18px rgba(15,23,42,0.10);
-    }
-
-    button[kind="primary"]{
-        background: rgba(255,255,255,0.88) !important;
-        color: var(--text) !important;
-        border: 1px solid var(--border) !important;
-        box-shadow: 0 10px 20px rgba(15,23,42,0.06) !important;
-    }
-
-    /* Subheader spacing inside card */
-    h3{
-        margin-top: 0.2rem !important;
-        margin-bottom: 0.6rem !important;
-    }
-
-
-    /* Text / number inputs */
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stNumberInput"] input {
-        background: rgba(255,255,255,0.88) !important;
-        color: var(--text) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: 14px !important;
-        box-shadow: 0 10px 20px rgba(15,23,42,0.06) !important;
-    }
-
-    /* Selectbox + multiselect (BaseWeb) */
-    div[data-testid="stSelectbox"] [data-baseweb="select"] > div,
-    div[data-testid="stMultiSelect"] [data-baseweb="select"] > div {
-        background: rgba(255,255,255,0.88) !important;
-        color: var(--text) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: 14px !important;
-        box-shadow: 0 10px 20px rgba(15,23,42,0.06) !important;
-    }
-
-    /* Make the dropdown text + icon dark (some themes force gray) */
-    div[data-testid="stSelectbox"] * ,
-    div[data-testid="stMultiSelect"] * {
-        color: var(--text) !important;
-    }
-
-    /* Focus highlight: same accent as home.py */
-    div[data-testid="stTextInput"] input:focus,
-    div[data-testid="stNumberInput"] input:focus,
-    div[data-testid="stSelectbox"] [data-baseweb="select"] > div:focus-within,
-    div[data-testid="stMultiSelect"] [data-baseweb="select"] > div:focus-within {
-        border-color: rgba(37,99,235,0.55) !important;   /* accentA */
-        box-shadow:
-            0 10px 20px rgba(15,23,42,0.06),
-            0 0 0 4px rgba(37,99,235,0.18) !important;   /* soft glow */
-    }
-
-    /* Optional: remove weird dark “pill” around select value on some builds */
-    div[data-baseweb="select"] span {
-        background: transparent !important;
-    }
-    :root{
-    --field-bg: rgba(255,255,255,0.88);
-    --field-border: rgba(15,23,42,0.12);
-    --field-shadow: 0 10px 20px rgba(15,23,42,0.06);
-    --focus-ring: 0 0 0 4px rgba(37,99,235,0.18);
-    }
-
-    /* ---------- Expanders (black header bar) ---------- */
-    div[data-testid="stExpander"] details,
-    div[data-testid="stExpander"] summary{
-    background: var(--field-bg) !important;
-    border: 1px solid var(--field-border) !important;
+/* ---- Buttons ---- */
+div.stButton > button,
+div[data-testid="stFormSubmitButton"] > button{
+    width: 100%;
     border-radius: 16px !important;
-    box-shadow: var(--field-shadow) !important;
-    }
+    padding: 0.95rem 1.05rem !important;
+    font-weight: 750 !important;
 
-    div[data-testid="stExpander"] summary{
-    padding: 0.85rem 1.0rem !important;
-    }
-
-    div[data-testid="stExpander"] summary *{
+    background: rgba(255,255,255,0.88) !important;
     color: var(--text) !important;
-    }
 
-    div[data-testid="stExpander"] summary:hover{
-    border-color: rgba(37,99,235,0.22) !important;
-    }
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 10px 20px rgba(15,23,42,0.06);
+    transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, filter 120ms ease;
+}
 
-    /* Expand/collapse caret */
-    div[data-testid="stExpander"] summary svg{
-    fill: var(--text) !important;
+div.stButton > button:hover,
+div[data-testid="stFormSubmitButton"] > button:hover{
+    transform: translateY(-1px);
+    background: linear-gradient(90deg, var(--accentA), var(--accentB)) !important;
+    color: #ffffff !important;
+    border-color: rgba(255,255,255,0.20) !important;
+    box-shadow: 0 18px 35px rgba(37, 99, 235, 0.22);
+    filter: brightness(1.02);
+}
+
+div.stButton > button:active,
+div[data-testid="stFormSubmitButton"] > button:active{
+    transform: translateY(0px);
+    box-shadow: 0 10px 18px rgba(15,23,42,0.10);
+}
+
+button[kind="primary"]{
+    background: rgba(255,255,255,0.88) !important;
     color: var(--text) !important;
-    }
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 10px 20px rgba(15,23,42,0.06) !important;
+}
 
-    /* Expander content area */
-    div[data-testid="stExpander"] div[role="region"]{
+/* Subheader spacing inside card */
+h3{
+    margin-top: 0.2rem !important;
+    margin-bottom: 0.6rem !important;
+}
+
+
+/* Text / number inputs */
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input {
+    background: rgba(255,255,255,0.88) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 10px 20px rgba(15,23,42,0.06) !important;
+}
+
+/* Selectbox + multiselect (BaseWeb) */
+div[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+div[data-testid="stMultiSelect"] [data-baseweb="select"] > div {
+    background: rgba(255,255,255,0.88) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 10px 20px rgba(15,23,42,0.06) !important;
+}
+
+/* Make the dropdown text + icon dark (some themes force gray) */
+div[data-testid="stSelectbox"] * ,
+div[data-testid="stMultiSelect"] * {
+    color: var(--text) !important;
+}
+
+/* Focus highlight: same accent as home.py */
+div[data-testid="stTextInput"] input:focus,
+div[data-testid="stNumberInput"] input:focus,
+div[data-testid="stSelectbox"] [data-baseweb="select"] > div:focus-within,
+div[data-testid="stMultiSelect"] [data-baseweb="select"] > div:focus-within {
+    border-color: rgba(37,99,235,0.55) !important;   /* accentA */
+    box-shadow:
+        0 10px 20px rgba(15,23,42,0.06),
+        0 0 0 4px rgba(37,99,235,0.18) !important;   /* soft glow */
+}
+
+/* Optional: remove weird dark “pill” around select value on some builds */
+div[data-baseweb="select"] span {
     background: transparent !important;
-    }
+}
+:root{
+--field-bg: rgba(255,255,255,0.88);
+--field-border: rgba(15,23,42,0.12);
+--field-shadow: 0 10px 20px rgba(15,23,42,0.06);
+--focus-ring: 0 0 0 4px rgba(37,99,235,0.18);
+}
+
+/* ---------- Expanders (black header bar) ---------- */
+div[data-testid="stExpander"] details,
+div[data-testid="stExpander"] summary{
+background: var(--field-bg) !important;
+border: 1px solid var(--field-border) !important;
+border-radius: 16px !important;
+box-shadow: var(--field-shadow) !important;
+}
+
+div[data-testid="stExpander"] summary{
+padding: 0.85rem 1.0rem !important;
+}
+
+div[data-testid="stExpander"] summary *{
+color: var(--text) !important;
+}
+
+div[data-testid="stExpander"] summary:hover{
+border-color: rgba(37,99,235,0.22) !important;
+}
+
+/* Expand/collapse caret */
+div[data-testid="stExpander"] summary svg{
+fill: var(--text) !important;
+color: var(--text) !important;
+}
+
+/* Expander content area */
+div[data-testid="stExpander"] div[role="region"]{
+background: transparent !important;
+}
 
 
-    /* ---------- Inputs + Selects (BaseWeb) ---------- */
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stNumberInput"] input{
-    background: var(--field-bg) !important;
-    color: var(--text) !important;
-    border: 1px solid var(--field-border) !important;
-    border-radius: 14px !important;
-    box-shadow: var(--field-shadow) !important;
-    }
+/* ---------- Inputs + Selects (BaseWeb) ---------- */
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input{
+background: var(--field-bg) !important;
+color: var(--text) !important;
+border: 1px solid var(--field-border) !important;
+border-radius: 14px !important;
+box-shadow: var(--field-shadow) !important;
+}
 
-    div[data-testid="stSelectbox"] [data-baseweb="select"] > div,
-    div[data-testid="stMultiSelect"] [data-baseweb="select"] > div{
-    background: var(--field-bg) !important;
-    color: var(--text) !important;
-    border: 1px solid var(--field-border) !important;
-    border-radius: 14px !important;
-    box-shadow: var(--field-shadow) !important;
-    }
+div[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+div[data-testid="stMultiSelect"] [data-baseweb="select"] > div{
+background: var(--field-bg) !important;
+color: var(--text) !important;
+border: 1px solid var(--field-border) !important;
+border-radius: 14px !important;
+box-shadow: var(--field-shadow) !important;
+}
 
-    /* Dropdown menu panel (often black) */
-    ul[role="listbox"],
-    div[data-baseweb="popover"]{
-    background: rgba(255,255,255,0.96) !important;
-    color: var(--text) !important;
-    border: 1px solid rgba(15,23,42,0.10) !important;
-    border-radius: 14px !important;
-    box-shadow: 0 18px 40px rgba(15,23,42,0.10) !important;
-    }
+/* Dropdown menu panel (often black) */
+ul[role="listbox"],
+div[data-baseweb="popover"]{
+background: rgba(255,255,255,0.96) !important;
+color: var(--text) !important;
+border: 1px solid rgba(15,23,42,0.10) !important;
+border-radius: 14px !important;
+box-shadow: 0 18px 40px rgba(15,23,42,0.10) !important;
+}
 
-    /* Dropdown options */
-    li[role="option"]{
-    color: var(--text) !important;
-    }
-    li[role="option"][aria-selected="true"]{
-    background: rgba(37,99,235,0.10) !important;
-    }
+/* Dropdown options */
+li[role="option"]{
+color: var(--text) !important;
+}
+li[role="option"][aria-selected="true"]{
+background: rgba(37,99,235,0.10) !important;
+}
 
-    /* Focus highlight */
-    div[data-testid="stTextInput"] input:focus,
-    div[data-testid="stNumberInput"] input:focus,
-    div[data-testid="stSelectbox"] [data-baseweb="select"] > div:focus-within,
-    div[data-testid="stMultiSelect"] [data-baseweb="select"] > div:focus-within{
-    border-color: rgba(37,99,235,0.55) !important;
-    box-shadow: var(--field-shadow), var(--focus-ring) !important;
-    }
+/* Focus highlight */
+div[data-testid="stTextInput"] input:focus,
+div[data-testid="stNumberInput"] input:focus,
+div[data-testid="stSelectbox"] [data-baseweb="select"] > div:focus-within,
+div[data-testid="stMultiSelect"] [data-baseweb="select"] > div:focus-within{
+border-color: rgba(37,99,235,0.55) !important;
+box-shadow: var(--field-shadow), var(--focus-ring) !important;
+}
 
-    /* Number input +/- buttons (they can appear dark) */
-    div[data-testid="stNumberInput"] button{
-    background: var(--field-bg) !important;
-    color: var(--text) !important;
-    border: 1px solid var(--field-border) !important;
-    box-shadow: none !important;
-    }
-    div[data-testid="stExpander"] summary{
-  filter: none !important;
-  -webkit-text-fill-color: var(--text) !important;
-    }
-    div[data-testid="stNumberInput"] button:hover{
-    border-color: rgba(37,99,235,0.35) !important;
-    }
-    /* ---------- Data editor / table (the black middle list) ---------- */
-    /* Outer container */
-    div[data-testid="stDataEditor"]{
-    border-radius: 16px !important;
-    }
+/* Number input +/- buttons (they can appear dark) */
+div[data-testid="stNumberInput"] button{
+background: var(--field-bg) !important;
+color: var(--text) !important;
+border: 1px solid var(--field-border) !important;
+box-shadow: none !important;
+}
+div[data-testid="stExpander"] summary{
+filter: none !important;
+-webkit-text-fill-color: var(--text) !important;
+}
+div[data-testid="stNumberInput"] button:hover{
+border-color: rgba(37,99,235,0.35) !important;
+}
+/* ---------- Data editor / table (the black middle list) ---------- */
+/* Outer container */
+div[data-testid="stDataEditor"]{
+border-radius: 16px !important;
+}
 
-    /* The “grid” itself (Streamlit uses a grid component under the hood) */
-    div[data-testid="stDataEditor"] [role="grid"],
-    div[data-testid="stDataEditor"] .stDataFrame,
-    div[data-testid="stDataEditor"] [data-testid="stTable"]{
-    background: rgba(255,255,255,0.92) !important;
-    color: var(--text) !important;
-    border: 1px solid rgba(15,23,42,0.10) !important;
-    border-radius: 16px !important;
-    box-shadow: var(--field-shadow) !important;
-    }
+/* The “grid” itself (Streamlit uses a grid component under the hood) */
+div[data-testid="stDataEditor"] [role="grid"],
+div[data-testid="stDataEditor"] .stDataFrame,
+div[data-testid="stDataEditor"] [data-testid="stTable"]{
+background: rgba(255,255,255,0.92) !important;
+color: var(--text) !important;
+border: 1px solid rgba(15,23,42,0.10) !important;
+border-radius: 16px !important;
+box-shadow: var(--field-shadow) !important;
+}
 
-    /* Header row */
-    div[data-testid="stDataEditor"] [role="columnheader"]{
-    background: rgba(248,250,252,0.95) !important;
-    color: var(--text) !important;
-    border-bottom: 1px solid rgba(15,23,42,0.08) !important;
-    }
+/* Header row */
+div[data-testid="stDataEditor"] [role="columnheader"]{
+background: rgba(248,250,252,0.95) !important;
+color: var(--text) !important;
+border-bottom: 1px solid rgba(15,23,42,0.08) !important;
+}
 
-    /* Cells */
-    div[data-testid="stDataEditor"] [role="gridcell"]{
-    background: rgba(255,255,255,0.90) !important;
-    color: var(--text) !important;
-    border-bottom: 1px solid rgba(15,23,42,0.06) !important;
-    }
+/* Cells */
+div[data-testid="stDataEditor"] [role="gridcell"]{
+background: rgba(255,255,255,0.90) !important;
+color: var(--text) !important;
+border-bottom: 1px solid rgba(15,23,42,0.06) !important;
+}
 
-    /* The “empty” / placeholder row text */
-    div[data-testid="stDataEditor"] [data-testid="stDataEditorEmpty"]{
-    color: rgba(71,85,105,0.85) !important;
-    }
+/* The “empty” / placeholder row text */
+div[data-testid="stDataEditor"] [data-testid="stDataEditorEmpty"]{
+color: rgba(71,85,105,0.85) !important;
+}
 
-    /* Selected cell / row highlight */
-    div[data-testid="stDataEditor"] [role="gridcell"][aria-selected="true"],
-    div[data-testid="stDataEditor"] [role="row"][aria-selected="true"] [role="gridcell"]{
-    background: rgba(37,99,235,0.10) !important;
-    outline: none !important;
-    }
+/* Selected cell / row highlight */
+div[data-testid="stDataEditor"] [role="gridcell"][aria-selected="true"],
+div[data-testid="stDataEditor"] [role="row"][aria-selected="true"] [role="gridcell"]{
+background: rgba(37,99,235,0.10) !important;
+outline: none !important;
+}
 
-    /* Editor input when editing a cell */
-    div[data-testid="stDataEditor"] input{
-    background: rgba(255,255,255,0.98) !important;
-    color: var(--text) !important;
-    border: 1px solid rgba(37,99,235,0.35) !important;
-    box-shadow: var(--focus-ring) !important;
-    }
-
-
-    /* ---------- Alerts (info box was blue, but keep consistent) ---------- */
-    div[data-testid="stAlert"]{
-    border-radius: 16px !important;
-    border: 1px solid rgba(15,23,42,0.10) !important;
-    box-shadow: 0 14px 28px rgba(15,23,42,0.07) !important;
-    }
-    div[data-testid="stAlert"] *{
-    color: var(--text) !important;
-    }
+/* Editor input when editing a cell */
+div[data-testid="stDataEditor"] input{
+background: rgba(255,255,255,0.98) !important;
+color: var(--text) !important;
+border: 1px solid rgba(37,99,235,0.35) !important;
+box-shadow: var(--focus-ring) !important;
+}
 
 
-    /* ---------- Sliders / misc dark bars (if any appear) ---------- */
-    div[data-testid="stSlider"] [role="slider"],
-    div[data-testid="stSlider"] [data-baseweb="slider"]{
-    color: var(--text) !important;
-    }
-    </style>
+/* ---------- Alerts (info box was blue, but keep consistent) ---------- */
+div[data-testid="stAlert"]{
+border-radius: 16px !important;
+border: 1px solid rgba(15,23,42,0.10) !important;
+box-shadow: 0 14px 28px rgba(15,23,42,0.07) !important;
+}
+div[data-testid="stAlert"] *{
+color: var(--text) !important;
+}
 
-    """,
-    unsafe_allow_html=True,
-)
 
-# Hero
-st.markdown(
-    """
-    <div class="center glyze-hero">
-        <div class="glyze-logo">
-            <div class="glyze-word">GLYZE</div>
-            <div class="butter-badge">🧈</div>
-        </div>
-        <div class="glyze-tagline">
-            Build and export a glyceride mixture — add by name or by structure, edit concentrations, switch units.
-        </div>
+/* ---------- Sliders / misc dark bars (if any appear) ---------- */
+div[data-testid="stSlider"] [role="slider"],
+div[data-testid="stSlider"] [data-baseweb="slider"]{
+color: var(--text) !important;
+}
+</style>
+"""
+
+HERO_HTML = """
+<div class="center glyze-hero">
+    <div class="glyze-logo">
+        <div class="glyze-word">GLYZE</div>
+        <div class="butter-badge">🧈</div>
     </div>
-    <div class="glyze-divider"></div>
-    """,
-    unsafe_allow_html=True,
-)
+    <div class="glyze-tagline">
+        Build and export a glyceride mixture — add by name or by structure, edit concentrations, switch units.
+    </div>
+</div>
+<div class="glyze-divider"></div>
+"""
+
+
+st.markdown(PAGE_CSS, unsafe_allow_html=True)
+st.markdown(HERO_HTML, unsafe_allow_html=True)
 
 # Card wrapper
 st.markdown('<div class="glyze-card">', unsafe_allow_html=True)
@@ -428,8 +429,11 @@ st.markdown(
 
 MM_H2O = 18.01528
 MM_GLYCEROL = 92.09382
+DISPLAY_UNITS = ["mole", "gram", "mass_fraction"]
+ADD_UNITS = ["mole", "gram"]
 
 
+@lru_cache(maxsize=512)
 def parse_component_from_string(s: str) -> Any:
     s = (s or "").strip()
     if not s:
@@ -481,25 +485,38 @@ def format_fa_name(
     return name
 
 
-def molar_mass_of(comp: Any) -> float:
-    """
-    Grab the molar mass of a component
-    """
-    if comp == "H2O":
-        return MM_H2O
-    if comp == "Glycerol":
-        return MM_GLYCEROL
-    if hasattr(comp, "molar_mass"):
-        return float(comp.molar_mass)
-    raise ValueError(f"Cannot determine molar mass for component {comp!r}")
-
-
 def comp_display_name(comp: Any) -> str:
     if comp in {"H2O", "Glycerol"}:
         return str(comp)
     if hasattr(comp, "name"):
         return str(comp.name)
     return str(comp)
+
+
+@lru_cache(maxsize=1024)
+def molar_mass_from_name(name: str) -> float:
+    """
+    Grab the molar mass of a component
+    """
+    if name == "H2O":
+        return MM_H2O
+    if name == "Glycerol":
+        return MM_GLYCEROL
+    comp = parse_component_from_string(name)
+    if hasattr(comp, "molar_mass"):
+        return float(comp.molar_mass)
+    raise ValueError(f"Cannot determine molar mass for component {name!r}")
+
+
+def molar_mass_of(comp: Any) -> float:
+    return molar_mass_from_name(comp_display_name(comp))
+
+
+def get_file_name(file_object):
+    if hasattr(file_object, "name"):
+        return file_object.name
+    else:
+        return "In-memory stream or no name available"
 
 
 # Dataclass containing a row of the list in the middle of the page
@@ -548,24 +565,39 @@ def add_to_mix(comp: Any, qty: float, qty_unit: str) -> None:
     set_mix_rows(merge_rows(rows))
 
 
-def rows_to_display_df(rows: List[MixRow], display_unit: str) -> pd.DataFrame:
-    if not rows:
+def rows_signature(rows: List[MixRow]) -> Tuple[Tuple[str, float, float], ...]:
+    return tuple(
+        (comp_display_name(r.comp), float(r.moles), molar_mass_of(r.comp)) for r in rows
+    )
+
+
+@st.cache_data(show_spinner=False)
+def rows_to_display_df_cached(
+    sig: Tuple[Tuple[str, float, float], ...], display_unit: str
+) -> pd.DataFrame:
+    if not sig:
         return pd.DataFrame({"Species": [], "Quantity": []})
 
-    species = [comp_display_name(r.comp) for r in rows]
+    species = [name for name, _, _ in sig]
+    moles = [moles for _, moles, _ in sig]
+    molar_masses = [mm for _, _, mm in sig]
 
     if display_unit == "mole":
-        qty = [r.moles for r in rows]
+        qty = moles
     elif display_unit == "gram":
-        qty = [r.moles * molar_mass_of(r.comp) for r in rows]
+        qty = [m * mm for m, mm in zip(moles, molar_masses)]
     elif display_unit == "mass_fraction":
-        masses = [r.moles * molar_mass_of(r.comp) for r in rows]
+        masses = [m * mm for m, mm in zip(moles, molar_masses)]
         total = sum(masses) or 1.0
         qty = [m / total for m in masses]
     else:
         raise ValueError(f"Unsupported display unit: {display_unit}")
 
     return pd.DataFrame({"Species": species, "Quantity": qty})
+
+
+def rows_to_display_df(rows: List[MixRow], display_unit: str) -> pd.DataFrame:
+    return rows_to_display_df_cached(rows_signature(rows), display_unit)
 
 
 def apply_table_edits_to_rows(
@@ -611,12 +643,56 @@ def apply_table_edits_to_rows(
 
 # Turn the data frame to a csv (TODO: Ensure that this dataframe is accessible
 # to other pages and can be turned into a GlycerideMix)
-def export_csv_bytes(rows: List[MixRow], export_unit: str) -> bytes:
-    df = rows_to_display_df(rows, export_unit)
+@st.cache_data(show_spinner=False)
+def export_csv_bytes_cached(
+    sig: Tuple[Tuple[str, float, float], ...], export_unit: str
+) -> bytes:
+    df = rows_to_display_df_cached(sig, export_unit).copy()
     df.insert(2, "Units", export_unit)
     buf = io.StringIO()
     df.to_csv(buf, index=False)
     return buf.getvalue().encode("utf-8")
+
+
+def export_csv_bytes(rows: List[MixRow], export_unit: str) -> bytes:
+    return export_csv_bytes_cached(rows_signature(rows), export_unit)
+
+
+def parse_int_list(s: str) -> List[int]:
+    # Parse the integers (then will be input as strings)
+    s = (s or "").strip()
+    if not s:
+        return []
+    return [int(x.strip()) for x in s.split(",") if x.strip()]
+
+
+def parse_stereo_list(s: str) -> List[str]:
+    # Parse the lists (they are also input as strings)
+    s = (s or "").strip()
+    if not s:
+        return []
+    out = [x.strip().upper() for x in s.split(",") if x.strip()]
+    for x in out:
+        if x not in {"Z", "E"}:
+            raise ValueError("Stereo must be Z or E.")
+    return out
+
+
+def import_mix_from_uploaded_csv(uploaded_file) -> List[MixRow]:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+        tmp.write(uploaded_file.getvalue())
+        tmp_path = Path(tmp.name)
+
+    try:
+        mix = GlycerideMix.from_csv(str(tmp_path))
+        return [MixRow(comp, moles) for comp, moles in mix.mix.items()]
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def build_mix_object(rows: List[MixRow]) -> GlycerideMix:
+    mix_dict = {r.comp: r.moles for r in rows}
+    return GlycerideMix(mix_dict, units="mole", sort=True)
 
 
 display_unit = st.session_state.setdefault("display_unit", "mole")
@@ -630,24 +706,29 @@ with left:
 
     # Quick add by name
     with st.expander("Quick add by name", expanded=True):
-        # How to use instructions
-        st.write("Examples: `N18D1P09Z`, `G_N18D1P09Z_N16D0_N16D0`, `H2O`, `Glycerol`")
+        with st.form("quick_add_form", clear_on_submit=False):
+            # How to use instructions
+            st.write("Examples: `N18D1P09Z`, `G_N18D1P09Z_N16D0_N16D0`, `H2O`, `Glycerol`")
 
-        # Text input for name
-        name_str = st.text_input("Component name", key="quick_name")
+            # Text input for name
+            name_str = st.text_input("Component name", key="quick_name")
 
-        # qty input
-        qty = st.number_input(
-            "Quantity", min_value=0.0, value=1.0, step=0.1, key="quick_qty"
-        )
+            # qty input
+            qty = st.number_input(
+                "Quantity", min_value=0.0, value=1.0, step=0.1, key="quick_qty"
+            )
 
-        # Units
-        qty_unit = st.selectbox(
-            "Quantity units", ["mole", "gram"], key="quick_qty_unit"
-        )
+            # Units
+            qty_unit = st.selectbox(
+                "Quantity units", ADD_UNITS, key="quick_qty_unit"
+            )
 
-        # Add button
-        if st.button("Add", use_container_width=True, key="quick_add_btn"):
+            # Add button
+            quick_add = st.form_submit_button(
+                "Add", use_container_width=True
+            )
+
+        if quick_add:
             try:
                 comp = parse_component_from_string(name_str)
                 add_to_mix(comp, qty, qty_unit)
@@ -657,65 +738,50 @@ with left:
 
     # Build fatty acids from individual inputs
     with st.expander("Build fatty acid by fields"):
-        # Carbons and db_count
-        carbons = st.number_input(
-            "Carbons (CC)", min_value=2, max_value=40, value=18, step=1, key="fa_cc"
-        )
-        db_count = st.number_input(
-            "Double bonds (DD)", min_value=0, max_value=8, value=1, step=1, key="fa_dd"
-        )
+        with st.form("fatty_acid_form", clear_on_submit=False):
+            # Carbons and db_count
+            carbons = st.number_input(
+                "Carbons (CC)", min_value=2, max_value=40, value=18, step=1, key="fa_cc"
+            )
+            db_count = st.number_input(
+                "Double bonds (DD)", min_value=0, max_value=8, value=1, step=1, key="fa_dd"
+            )
 
-        # Double bond positions input
-        st.caption("Double-bond positions + stereo (Z/E) — one per double bond.")
-        db_pos_str = st.text_input(
-            "DB positions (comma-separated)",
-            value="9" if db_count else "",
-            key="fa_dbpos",
-        )
-        db_st_str = st.text_input(
-            "DB stereo (comma-separated, Z/E)",
-            value="Z" if db_count else "",
-            key="fa_dbst",
-        )
+            # Double bond positions input
+            st.caption("Double-bond positions + stereo (Z/E) — one per double bond.")
+            db_pos_str = st.text_input(
+                "DB positions (comma-separated)",
+                value="9" if db_count else "",
+                key="fa_dbpos",
+            )
+            db_st_str = st.text_input(
+                "DB stereo (comma-separated, Z/E)",
+                value="Z" if db_count else "",
+                key="fa_dbst",
+            )
 
-        # Optional branches input
-        st.caption("Optional branches")
-        methyl_str = st.text_input(
-            "Methyl positions (comma-separated)", value="", key="fa_methyl"
-        )
-        hydroxyl_str = st.text_input(
-            "Hydroxyl positions (comma-separated)", value="", key="fa_oh"
-        )
+            # Optional branches input
+            st.caption("Optional branches")
+            methyl_str = st.text_input(
+                "Methyl positions (comma-separated)", value="", key="fa_methyl"
+            )
+            hydroxyl_str = st.text_input(
+                "Hydroxyl positions (comma-separated)", value="", key="fa_oh"
+            )
 
-        fa_qty = st.number_input(
-            "Quantity", min_value=0.0, value=1.0, step=0.1, key="fa_qty"
-        )
-        fa_qty_unit = st.selectbox(
-            "Quantity units", ["mole", "gram"], key="fa_qty_unit"
-        )
+            fa_qty = st.number_input(
+                "Quantity", min_value=0.0, value=1.0, step=0.1, key="fa_qty"
+            )
+            fa_qty_unit = st.selectbox(
+                "Quantity units", ADD_UNITS, key="fa_qty_unit"
+            )
 
-        # Parse the integers (then will be input as strings)
-        def parse_int_list(s: str) -> List[int]:
-            s = (s or "").strip()
-            if not s:
-                return []
-            return [int(x.strip()) for x in s.split(",") if x.strip()]
+            # Build and add the fatty acid to an internal list
+            add_fa = st.form_submit_button(
+                "Build + Add Fatty Acid", use_container_width=True
+            )
 
-        # Parse the lists (they are also input as strings)
-        def parse_stereo_list(s: str) -> List[str]:
-            s = (s or "").strip()
-            if not s:
-                return []
-            out = [x.strip().upper() for x in s.split(",") if x.strip()]
-            for x in out:
-                if x not in {"Z", "E"}:
-                    raise ValueError("Stereo must be Z or E.")
-            return out
-
-        # Build and add the fatty acid to an internal list
-        if st.button(
-            "Build + Add Fatty Acid", use_container_width=True, key="fa_add_btn"
-        ):
+        if add_fa:
             try:
                 db_positions = parse_int_list(db_pos_str)
                 db_stereo = parse_stereo_list(db_st_str)
@@ -740,20 +806,23 @@ with left:
 
     # Build glycerides using fatty acids
     with st.expander("Build glyceride from 3 fatty-acid names"):
-        st.write("Enter three FA names, then create `G_fa1_fa2_fa3`.")
-        fa1 = st.text_input("FA 1", value="N18D1P09Z", key="g_fa1")
-        fa2 = st.text_input("FA 2", value="N16D00", key="g_fa2")
-        fa3 = st.text_input("FA 3", value="N16D00", key="g_fa3")
+        with st.form("glyceride_form", clear_on_submit=False):
+            st.write("Enter three FA names, then create `G_fa1_fa2_fa3`.")
+            fa1 = st.text_input("FA 1", value="N18D1P09Z", key="g_fa1")
+            fa2 = st.text_input("FA 2", value="N16D00", key="g_fa2")
+            fa3 = st.text_input("FA 3", value="N16D00", key="g_fa3")
 
-        g_qty = st.number_input(
-            "Quantity", min_value=0.0, value=1.0, step=0.1, key="g_qty"
-        )
-        g_qty_unit = st.selectbox("Quantity units", ["mole", "gram"], key="g_qty_unit")
+            g_qty = st.number_input(
+                "Quantity", min_value=0.0, value=1.0, step=0.1, key="g_qty"
+            )
+            g_qty_unit = st.selectbox("Quantity units", ADD_UNITS, key="g_qty_unit")
 
-        # Add the objects to the mixture
-        if st.button(
-            "🧈 Build + Add Glyceride", use_container_width=True, key="g_add_btn"
-        ):
+            # Add the objects to the mixture
+            add_glyceride = st.form_submit_button(
+                "🧈 Build + Add Glyceride", use_container_width=True
+            )
+
+        if add_glyceride:
             try:
                 _ = FattyAcid.from_name(fa1.strip())
                 _ = FattyAcid.from_name(fa2.strip())
@@ -769,7 +838,7 @@ with left:
 
 with mid:
     # Controls the list in the middle of the screen
-    st.subheader("Mixture (edit here)")
+    st.subheader("Mixture")
 
     rows = get_mix_rows()
 
@@ -779,13 +848,13 @@ with mid:
         # Display units in select box
         new_display_unit = st.selectbox(
             "Display/edit units",
-            ["mole", "gram", "mass_fraction"],
-            index=["mole", "gram", "mass_fraction"].index(display_unit),
+            DISPLAY_UNITS,
+            index=DISPLAY_UNITS.index(display_unit),
             key="display_unit_select",
         )
     # In row 2, have clear mix button
     with c2:
-        if st.button("🧹 Clear mix", use_container_width=True):
+        if st.button("Clear mix", use_container_width=True):
             set_mix_rows([])
             st.rerun()
 
@@ -795,21 +864,26 @@ with mid:
     # Display rows in dataframe in the middle of the screen
     df = rows_to_display_df(rows, display_unit)
 
-    edited = st.data_editor(
-        df,
-        use_container_width=True,
-        num_rows="fixed",
-        column_config={
-            "Species": st.column_config.TextColumn(disabled=True),
-            "Quantity": st.column_config.NumberColumn(
-                min_value=0.0, step=0.1, format="%.6g"
-            ),
-        },
-        key="mix_table_editor",
-    )
+    with st.form("mix_editor_form", clear_on_submit=False):
+        edited = st.data_editor(
+            df,
+            use_container_width=True,
+            num_rows="fixed",
+            column_config={
+                "Species": st.column_config.TextColumn(disabled=True),
+                "Quantity": st.column_config.NumberColumn(
+                    min_value=0.0, step=0.000001, format="%.15g"
+                ),
+            },
+            key="mix_table_editor",
+        )
 
-    # Apply the edits made to the table!
-    if st.button("Apply table edits", use_container_width=True, key="apply_edits_btn"):
+        # Apply the edits made to the table!
+        apply_edits = st.form_submit_button(
+            "Apply table edits", use_container_width=True
+        )
+
+    if apply_edits:
         try:
             new_rows = apply_table_edits_to_rows(edited, rows, display_unit)
             set_mix_rows(new_rows)
@@ -835,8 +909,8 @@ with right:
 
     export_unit = st.selectbox(
         "Export units",
-        ["mole", "gram", "mass_fraction"],
-        index=["mole", "gram", "mass_fraction"].index(export_unit),
+        DISPLAY_UNITS,
+        index=DISPLAY_UNITS.index(export_unit),
         key="export_unit_select",
     )
     st.session_state["export_unit"] = export_unit
@@ -845,7 +919,6 @@ with right:
     rows = get_mix_rows()
     csv_bytes = export_csv_bytes(rows, export_unit)
 
-    # Button to download CSV (TODO: Add path input)
     st.download_button(
         "Download CSV",
         data=csv_bytes,
@@ -855,6 +928,23 @@ with right:
         disabled=(len(rows) == 0),
     )
 
+    with st.form("import_csv_form", clear_on_submit=False):
+        uploaded_file = st.file_uploader(
+            "Upload your CSV file", type=["csv"], key="import_csv_uploader"
+        )
+        import_csv = st.form_submit_button(
+            "Import CSV", use_container_width=True, disabled=(uploaded_file is None)
+        )
+
+    if import_csv and uploaded_file is not None:
+        try:
+            imported_rows = import_mix_from_uploaded_csv(uploaded_file)
+            st.success(f"Imported: {uploaded_file.name}")
+            set_mix_rows(imported_rows)
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error importing CSV: {str(e)}")
+
     st.divider()
     st.subheader("Build object")
 
@@ -862,10 +952,26 @@ with right:
         "Build GlycerideMix", use_container_width=True, disabled=(len(rows) == 0)
     ):
         try:
-            mix_dict = {r.comp: r.moles for r in rows}
-            mix_obj = GlycerideMix(mix_dict, units="mole", sort=True)
+            mix_obj = build_mix_object(rows)
+            st.session_state["glyze_mix_object"] = mix_obj
+            st.session_state["glyze_mix_rows"] = rows
+            st.session_state["processor_mix_rows"] = rows
+            st.session_state["glyze_mix_initialized"] = True
             st.success(f"Built: {mix_obj.name}")
             st.code(repr(mix_obj))
+        except Exception as e:
+            st.error(str(e))
+
+    if st.button(
+        "Initialize Chem Processor", use_container_width=True, disabled=(len(rows) == 0)
+    ):
+        try:
+            mix_obj = build_mix_object(rows)
+            st.session_state["glyze_mix_object"] = mix_obj
+            st.session_state["glyze_mix_rows"] = rows
+            st.session_state["processor_mix_rows"] = rows
+            st.session_state["glyze_mix_initialized"] = True
+            st.success("Mixture sent to the Chem Processor page.")
         except Exception as e:
             st.error(str(e))
 

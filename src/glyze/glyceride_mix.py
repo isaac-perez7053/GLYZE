@@ -11,6 +11,7 @@ from rdkit import Chem
 from rdkit.Geometry import Point3D
 from pathlib import Path
 import csv
+from collections import Counter
 
 
 RESNAME_FORBIDDEN = {
@@ -115,6 +116,15 @@ def _canonical_component(comp: MixtureComponent) -> MixtureComponent:
     return comp
 
 
+def _clip_small_quantity(qty: float, atol: float = 1e-12) -> float:
+    """
+    Clip extremely small floating-point quantities to exactly zero.
+    Any negative quantity is also clipped to zero.
+    """
+    qty = float(qty)
+    return 0.0 if qty < 0 or abs(qty) <= atol else qty
+
+
 def water_vapor_pressure(T: float):
     """
     Calculate water vapor pressure in mmHg using Antoine equation.
@@ -168,7 +178,7 @@ class MixtureComponent:
     def vapor_pressure(self, T: float):
         vp = getattr(self.component, "vapor_pressure", None)
         if vp is None:
-            if self.component == "H2O": # TODO: should we use H2O or H20?? should be standardized
+            if self.component == "H2O": 
                 return water_vapor_pressure(T)
             return glycerol_vapor_pressure(T)
         return vp(T) if callable(vp) else vp
@@ -179,10 +189,32 @@ class MixtureComponent:
             return self.component.name
         return str(self.component)
 
+    @property 
+    def molar_mass(self):
+        if hasattr(self.component, 'molar_mass'):
+            return self.component.molar_mass
+        elif self.component == "H2O":
+            return 18.01528
+        elif self.component == "Glycerol":
+            return 92.09
+        else:
+            raise ValueError(f"Unknown molar mass for component: {self.component}")
+        
+    @property 
+    def length(self):
+        if hasattr(self.component, 'chain_legnths'):
+            # Return a list like [9, 9, 8] to [(9, 2), (8, 1)]
+            return list(Counter(self.component.chain_lengths).items())
+        elif hasattr(self.component, 'num_carbons'):
+            return [(self.component.num_carbons, 1)]
+        else:
+            # Return null list if water or glycerol
+            return []
 
 class GlycerideMix:
-    def __init__(self, mix, units: str = "mole", *, sort: bool = True):
+    def __init__(self, mix, units: str = "mole", *, sort: bool = True, zero_tol: float = 1e-12):
         self.units = units
+        self.zero_tol = float(zero_tol)
 
         # Take in a dictionary or iterable pair to create a list of tuples
         pairs = _as_pairs(mix)
@@ -193,12 +225,16 @@ class GlycerideMix:
         for comp, qty in pairs:
             comp_c = _canonical_component(comp)
             key = _canonical_key(comp_c)
-            merged_qty[key] = merged_qty.get(key, 0.0) + float(qty)
+            merged_qty[key] = _clip_small_quantity(
+                merged_qty.get(key, 0.0) + float(qty), atol=self.zero_tol
+            )
             rep_obj.setdefault(key, comp_c)
 
         keys = list(merged_qty.keys())
         if sort:
             keys.sort()
+
+        keys = [k for k in keys if abs(merged_qty[k]) > self.zero_tol]
 
         self.components: List[MixtureComponent] = [rep_obj[k] for k in keys]
         self.quantities: List[float] = [merged_qty[k] for k in keys]
@@ -272,7 +308,9 @@ class GlycerideMix:
         if key not in self.index_by_key:
             raise ValueError(f"Component {component} not in mixture")
         i = self.index_by_key[key]
-        self.quantities[i] = new_quantity
+        clipped_quantity = _clip_small_quantity(new_quantity, atol=self.zero_tol)
+        self.quantities[i] = clipped_quantity
+        self.mix[self.components[i]] = clipped_quantity
 
     def add_species(self, species_conc: Tuple[MixtureComponent, float]):
         """
@@ -287,8 +325,10 @@ class GlycerideMix:
         key = _canonical_key(comp_c)
         if key in self.index_by_key:
             raise ValueError(f"Component {component} already in mixture")
+        clipped_quantity = _clip_small_quantity(quantity, atol=self.zero_tol)
         self.components.append(component)
-        self.quantities.append(quantity)
+        self.quantities.append(clipped_quantity)
+        self.mix[component] = clipped_quantity
         self.index_by_key[key] = len(self.components) - 1
 
     @staticmethod
@@ -368,7 +408,7 @@ class GlycerideMix:
         comp_c = _canonical_component(comp)
         key = _canonical_key(comp_c)
         i = self.index_by_key[key]
-        return self.quantities[i]
+        return _clip_small_quantity(self.quantities[i], atol=self.zero_tol)
 
     def update_mols_from_pdbs(
         self,
@@ -414,7 +454,7 @@ class GlycerideMix:
 
     def total_quantity(self) -> float:
         """Calculate the total quantity of all glycerides in the mix."""
-        return sum(self.mix.values())
+        return _clip_small_quantity(sum(self.quantities), atol=self.zero_tol)
 
     def build_simulation_box(
         self,

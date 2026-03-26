@@ -11,7 +11,7 @@ from .p_kinetic_sim import PKineticSim
 class Esterifier:
 
     @staticmethod
-    def p_kinetic_esterification_rxn_list(
+    def esterification_rxn_list(
         list_of_fa: List[FattyAcid],
     ) -> List[str]:
         """
@@ -122,7 +122,7 @@ class Esterifier:
         return list_of_rxns
 
     @staticmethod
-    def p_kinetic_esterification(
+    def esterification(
         list_of_fa: List[FattyAcid],
         initial_conc: List[int],
         ks: List[float],
@@ -149,7 +149,7 @@ class Esterifier:
 
         if ks is not None:
             if len(ks) != len(
-                Esterifier.p_kinetic_esterification_rxn_list(list_of_fa=list_of_fa)
+                Esterifier.esterification_rxn_list(list_of_fa=list_of_fa)
             ):
                 raise ValueError("Make sure that you input the correct number of ks!")
         # First add glyceride and fatty acid species to the reactants

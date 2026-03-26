@@ -101,12 +101,30 @@ class PKineticSim:
         self.sol = sol
         return sol
 
-    def plot(self, sol, show_species: list[str] | None = None, figsize=(10, 6)):
+    def plot(self, sol, show_species: list[str] | None = None, figsize=(14, 10)):
         """
         Plot specified species (or all if None)
         """
         if not sol.success:
             raise RuntimeError(f"Integration failed: {sol.message}")
+
+        # Set publication-ready style
+        import matplotlib as mpl
+        mpl.rcParams['font.family'] = 'serif'
+        mpl.rcParams['font.serif'] = 'Times New Roman'
+        mpl.rcParams['axes.linewidth'] = 1.5
+        mpl.rcParams['xtick.major.width'] = 1.5
+        mpl.rcParams['ytick.major.width'] = 1.5
+        mpl.rcParams['xtick.minor.width'] = 1.0
+        mpl.rcParams['ytick.minor.width'] = 1.0
+        mpl.rcParams['xtick.major.size'] = 6
+        mpl.rcParams['ytick.major.size'] = 6
+        mpl.rcParams['xtick.minor.size'] = 4
+        mpl.rcParams['ytick.minor.size'] = 4
+
+        # Colorblind-friendly color cycle
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+        mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=colors)
 
         idxs = (
             range(len(self.species_names))
@@ -116,10 +134,13 @@ class PKineticSim:
 
         plt.figure(figsize=figsize)
         for i in idxs:
-            plt.plot(sol.t, sol.y[i, :], label=self.species_names[i])
-        plt.xlabel("Time")
-        plt.ylabel("Concentration")
-        plt.legend(loc="best", ncols=2)
+            plt.plot(sol.t, sol.y[i, :], label=self.species_names[i], linewidth=2.5)
+        plt.xlabel("Time", fontsize=18)
+        plt.ylabel("Concentration", fontsize=18)
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.grid(True, alpha=0.3, linestyle='--')
+        plt.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=14, frameon=True, fancybox=True, shadow=True)
         plt.tight_layout()
         plt.show()
 

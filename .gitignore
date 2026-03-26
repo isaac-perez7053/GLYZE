@@ -3,6 +3,8 @@ tester.ipynb
 scripts/tester.ipynb
 scripts/esterification_test.py
 src/__pycache__/
+src/glyze/glyceride_old.py
+src/glyze/glyceride_mix_old.py
 tests/
 build/
 .pytest_cache/
