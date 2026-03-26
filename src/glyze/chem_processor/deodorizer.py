@@ -1,4 +1,5 @@
-from glyze.glyceride_mix import GlycerideMix
+from glyze.glyceride_mix import GlycerideMix, _canonical_key, _canonical_component
+from glyze.glyceride import Glyceride, FattyAcid
 from scipy import optimize
 import math
 import plotly.graph_objects as go
@@ -68,7 +69,7 @@ class Deodorizer:
                 return tol
 
     @staticmethod
-    def deodorizer(mix: GlycerideMix, S: float, T: float, P: float, E: float):
+    def deodorizer(mix: GlycerideMix, S: float, T: float, P: float):
         """
         Pass the GlycerideMixture through the deodorizer a single time.
         Works on a snapshot of current quantities so self.mix is never mutated.
@@ -77,13 +78,11 @@ class Deodorizer:
         result_quantities = {}
 
         for component, Va in mix.mix.items():
-            A = P / (E * component.vapor_pressure(T))
+            A = P / (component.vapor_pressure(T))
             V0 = Deodorizer._solve_V0(Va, S, A)
             result_quantities[component] = V0
             total_final += V0
-
-        mole_fractions = {k: v / total_final for k, v in result_quantities.items()}
-        return (mole_fractions, total_final)
+        return (result_quantities, total_final)
 
     def plot(self, mix):
         return
@@ -93,7 +92,6 @@ class Deodorizer:
         mix: GlycerideMix,
         T: float,               # Temperature, [K]
         P: float,               # System pressure, [Pa]
-        E: float = 0.5,         # deodorization efficiency factor
         target: float = 0.001,  # target fatty acid fraction after deodorization [mol/mol]
         sbounds=(1e-6, 5),      # bounds for steam factor S [mol/mol oil]
         tol=1e-6,               # tolerance for bisection method convergence
@@ -108,13 +106,12 @@ class Deodorizer:
         -----------
             T (float): Temperature in Kelvin.
             P (float): Pressure in Pa.
-            E (float): Deodorization efficiency factor (0–1).
             target (float): Target fatty acid mole fraction after deodorization.
             sbounds (tuple): Search bounds for steam factor S [mol steam / mol oil].
             tol (float): Bisection convergence tolerance.
             nsteps (int): Maximum bisection iterations.
             verbose (bool): Print diagnostics.
-            plot (bool): Plot results (not yet implemented).
+            plot (bool): Plot results.
 
         Returns:
         -----------
@@ -124,9 +121,8 @@ class Deodorizer:
         sbounds = list(sbounds)
 
         def FA_fraction(S):
-            """Return the fatty acid mole fraction after a single pass at steam factor S."""
-            x, total_final = Deodorizer.deodorizer(mix,S, T, P, E)
-            return sum(x.get(fa, 0.0) for fa in mix.fa_list)
+            x, total_final = Deodorizer.deodorizer(mix, S, T, P)
+            return sum(qty for comp, qty in x.items() if comp.component in mix.fa_list) / total_final
 
         S_mid = 0.5 * (sbounds[0] + sbounds[1])
 
@@ -143,27 +139,58 @@ class Deodorizer:
             else:
                 sbounds[1] = S_mid
 
-        final_x, total_final = Deodorizer.deodorizer(mix, S_mid, T, P, E)
+        # Snapshot initial quantities before mutation
+        initial_x = {comp: qty for comp, qty in mix.mix.items()}
+        initial_total = sum(initial_x.values())
 
-        initial_total = sum(mix.mix.values())
+        final_x, total_final = Deodorizer.deodorizer(mix, S_mid, T, P)
 
-        # Update self.mix with final quantities
-        for component, frac in final_x.items():
-            mix.change_qty(component, frac * total_final)
-        
+        # Update mix.mix and mix.quantities with final absolute quantities.
+        # change_qty only writes to self.quantities (not self.mix), so we
+        # update both data structures here directly.
+        for component, qty in final_x.items():
+            mix.mix[component] = qty
+            key = _canonical_key(_canonical_component(component))
+            if key in mix.index_by_key:
+                mix.quantities[mix.index_by_key[key]] = qty
 
         if verbose:
             print("\n=== Steam Optimization Results ===")
             print(f"Optimal steam factor S: {S_mid:.6f}")
             print(f"Steam % of oil: {2 * S_mid:.2f}%")
-            print(f"\nFinal fatty acid fraction: {sum(final_x[n] for n in mix.fa_list):.6f}")
-            print("\nFinal composition:")
-            for k, v in final_x.items():
-                print(f"{k.name:15s} {v:.6f}")
+            print(f"\nFinal fatty acid fraction: {sum(qty for comp, qty in final_x.items() if comp.component in mix.fa_list) / total_final:.6f}")
+            print(f"\n{'Species':30s} {'Initial':>12s} {'Final':>12s} {'Removed':>12s}")
+            print("-" * 68)
+            for comp in initial_x:
+                qi = initial_x[comp]
+                qf = final_x[comp]
+                print(f"{comp.name:30s} {qi:12.6f} {qf:12.6f} {qi - qf:12.6f}")
             print("\nMaterial balance:")
-            print("Initial total moles:", initial_total)
-            print("Final total moles:", total_final)
-            print("Total removed:", initial_total - total_final)
+            print(f"Initial total moles: {initial_total:.6f}")
+            print(f"Final total moles:   {total_final:.6f}")
+            print(f"Total removed:       {initial_total - total_final:.6f}")
+
+        if plot:
+            names, qi_vals, qf_vals = [], [], []
+            for comp in initial_x:
+                if not isinstance(comp.component, (Glyceride, FattyAcid)):
+                    continue
+                names.append(comp.name)
+                qi_vals.append(initial_x[comp])
+                qf_vals.append(final_x[comp])
+
+            fig = go.Figure([
+                go.Bar(name="Initial", x=names, y=qi_vals),
+                go.Bar(name="Final",   x=names, y=qf_vals),
+            ])
+            fig.update_layout(
+                barmode="group",
+                title=f"Deodorizer: Initial vs Final Mole Quantities (S={S_mid:.4f})",
+                xaxis_title="Species",
+                yaxis_title="Moles",
+                xaxis_tickangle=-45,
+            )
+            fig.show()
 
         return S_mid
 

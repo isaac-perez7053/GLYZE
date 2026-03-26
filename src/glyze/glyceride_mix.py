@@ -215,12 +215,15 @@ class GlycerideMix:
         self.fa_indices: List[int] = []
 
         for i, comp in enumerate(self.components):
-            if isinstance(comp, Glyceride):
+            base = comp.component
+
+            if isinstance(base, Glyceride):
                 self.glyceride_indices.append(i)
-                self.glyceride_list.append(comp)
-            elif isinstance(comp, FattyAcid):
+                self.glyceride_list.append(base)
+
+            elif isinstance(base, FattyAcid):
                 self.fa_indices.append(i)
-                self.fa_list.append(comp)
+                self.fa_list.append(base)
 
         self.mol_list: List[Chem.Mol] = [
             g.to_rdkit_mol(optimize=True) for g in self.glyceride_list
