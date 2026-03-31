@@ -378,12 +378,12 @@ class FattyAcid:
     @property
     def ln_vapor_pressure(self) -> float:
         return -1.01 * self.num_carbons - 3.2
-
+    
     # need to find p
     @property
     def vapor_pressure(self) -> float:
         return 101325 * np.exp(self.num_carbons)
-
+    
     @property
     def name(self) -> str:
         """
