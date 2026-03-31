@@ -261,6 +261,12 @@ class FattyAcid:
         # Ensure branches are also sorted
         branches = tuple(sorted((int(p), str(lbl)) for p, lbl in self.branches))
         return FattyAcid(self.length, positions, stereo, branches)
+    
+    def vapor_pressure(self, T: float) -> float:
+        """
+        Calculate the vapor pressure of the fatty acid at temperature T
+        """
+        return (101325 * np.exp(self.num_carbons)) * np.exp(-(self.enthalpy_of_vaporization / 0.008314462618) * ((1/T) - (1/298.15)))
 
     def _build_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
         """
@@ -378,11 +384,6 @@ class FattyAcid:
     @property
     def ln_vapor_pressure(self) -> float:
         return -1.01 * self.num_carbons - 3.2
-    
-    # need to find p
-    @property
-    def vapor_pressure(self) -> float:
-        return 101325 * np.exp(self.num_carbons)
     
     @property
     def name(self) -> str:
