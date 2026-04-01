@@ -9,13 +9,13 @@ import numpy as np
 from functools import cached_property
 
 # Fragment values
-DELTA_H_MAG = 41.73
-DELTA_H_DAG = 3.486
-DELTA_H_TAG = -34.76
+DELTA_H_MAG = 4.173e7
+DELTA_H_DAG = 3.486e7
+DELTA_H_TAG = -3.476e7
 
-DELTA_G_MAG = -19.86
-DELTA_G_DAG = -46.87
-DELTA_G_TAG = -73.88
+DELTA_G_MAG = -1.986e7
+DELTA_G_DAG = -4.687e7
+DELTA_G_TAG = -7.388e7
 
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
@@ -264,9 +264,40 @@ class FattyAcid:
     
     def vapor_pressure(self, T: float) -> float:
         """
-        Calculate the vapor pressure of the fatty acid at temperature T
+        Calculate the vapor pressure of the fatty acid at temperature T (K)
         """
-        return (101325 * np.exp(self.num_carbons)) * np.exp(-(self.enthalpy_of_vaporization / 0.008314462618) * ((1/T) - (1/298.15)))
+        p_sum = 0
+        f0 = 0.001
+        alpha = 3.4443
+        beta = -499.3
+        gamma = 0.6136
+        delta = -0.00517
+        # Calculate component vapor pressure of -COOH group
+        A = 8.0734 + (45.017 * 0.00399) + (alpha * f0)
+        B = -20478.3 + (45.017 * -639929) + (beta * f0)
+        C = 0.0359 + (45.017 * -0.00106) + (gamma * f0)
+        D = -0.00207 + (45.017 * 0.00001) + (delta * f0)
+        p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
+
+        # Calculate component vapor pressure of CH3 gruop
+        A = -117.5 + (15.035 * 0.00338) + (alpha * f0)
+        B = 7232.3 + (15.035 * -63.3963) + (beta * f0)
+        C = -22.7929 + (15.035 * -0.00106) + (gamma * f0)
+        D = 0.0361 + (15.035 * 0.000015) + (delta * f0)
+        p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
+
+        # Calculate component vapor pressure of CH2 groups
+        N = self.num_carbons - 2
+        if N > 0:
+            A = N * (8.4816 + (14.027 * -0.00091)) + (alpha * f0)
+            B = N * (-10987.8 + (14.027 * 6.7157)) + (beta * f0)
+            C = N * (1.4067 + (14.027 * 0.0000041)) + (gamma * f0)
+            D = N * (-0.00167 + (14.027 * -0.00000126)) + (delta * f0)
+            p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
+        
+        return p_sum
+
+
 
     def _build_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
         """
@@ -379,11 +410,6 @@ class FattyAcid:
             return 5.36 * self.num_carbons + 37.1
         else:
             return 5.91 * self.num_carbons + 26.4
-
-    # ln(p/p0) where p0 = 101325 pa
-    @property
-    def ln_vapor_pressure(self) -> float:
-        return -1.01 * self.num_carbons - 3.2
     
     @property
     def name(self) -> str:
@@ -721,10 +747,28 @@ class Glyceride:
 
     # find vapor pressure based on temperature
     def vapor_pressure(self, T) -> float:
-        return np.exp(
-            (-self.gibbs_of_vaporitzation / (0.008314 * 298.15 * np.log(10)))
+        fa_len = [fa.num_carbons for fa in self.sn if fa]
+        delta_H = 0
+        delta_G = 0
+        if len(fa_len) == 1:
+            gly_frag_H = DELTA_H_MAG
+            gly_frag_G = DELTA_G_MAG
+        if len(fa_len) == 2:
+            gly_frag_H = 2 * DELTA_H_MAG
+            gly_frag_G = 2 * DELTA_G_MAG
+        if len(fa_len) == 3:
+            gly_frag_H = 3 * DELTA_H_MAG
+            gly_frag_G = 3 * DELTA_G_MAG
+            
+
+        delta_H += gly_frag_H + sum([(2093479.64 * c) + 31397826.69 for c in fa_len])
+        delta_G += gly_frag_G + sum([(1653142.78 * c) + 24008494.2 for c in fa_len])
+        R = 8.314
+
+        return 10**(
+            (-delta_G / (R * 298.15 * np.log(10)))
             + (
-                (self.enthalpy_of_vaporitzation / (0.008314 * np.log(10)))
+                (delta_H / (R * 298.15 * np.log(10)))
                 * ((1 / 298.15) - (1 / T))
             )
         )
@@ -878,18 +922,18 @@ class Glyceride:
             return (DELTA_H_TAG + sum(fa_i.num_carbons * 2.09 + 31.4 for fa_i in fa))
 
     # gibbs free energy of vaporization for mags, dags, tags
-    @property
-    def gibbs_of_vaporitzation(self) -> float:
-        fa = [x for x in self.sn if x]
-        # mag
-        if len(fa) == 1:
-            return DELTA_G_MAG + fa[0].num_carbons * 1.66 + 22
-        # dag
-        elif len(fa) == 2:
-            return (DELTA_G_DAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
-        # tag
-        else:
-            return (DELTA_G_TAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
+    # @property
+    # def gibbs_of_vaporitzation(self) -> float:
+    #     fa = [x for x in self.sn if x]
+    #     # mag
+    #     if len(fa) == 1:
+    #         return DELTA_G_MAG + fa[0].num_carbons * 1.66 + 22
+    #     # dag
+    #     elif len(fa) == 2:
+    #         return (DELTA_G_DAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
+    #     # tag
+    #     else:
+    #         return (DELTA_G_TAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
 
     @property
     def chain_lengths(self) -> Tuple[int, int, int]:
