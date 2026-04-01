@@ -27,6 +27,7 @@ src/glyze/chem_processor/esterifier.py
 src/glyze/chem_processor/interesterifier.py
 src/glyze/chem_processor/p_kinetic_sim.py
 src/glyze/chem_processor/plot_demo.py
+src/glyze/chem_processor/viscosity_calculator.py
 src/glyze/ui/Home.py
 src/glyze/ui/pages/Batch_Reactor.py
 src/glyze/ui/pages/Deodorizer.py

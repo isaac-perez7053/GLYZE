@@ -9,13 +9,13 @@ import numpy as np
 from functools import cached_property
 
 # Fragment values
-DELTA_H_MAG = 41.73
-DELTA_H_DAG = 3.486
-DELTA_H_TAG = -34.76
+DELTA_H_MAG = 4.173E7
+DELTA_H_DAG = 3.486E7
+DELTA_H_TAG = -3.476E7
 
-DELTA_G_MAG = -19.86
-DELTA_G_DAG = -46.87
-DELTA_G_TAG = -73.88
+DELTA_G_MAG = -1.986E7
+DELTA_G_DAG = -4.687E7
+DELTA_G_TAG = -7.388E7
 
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
@@ -365,26 +365,15 @@ class FattyAcid:
         """Return the number of carbons in the fatty acid"""
         return self.length
 
-    # need delta H first // in Kj mol^-1
-    # TODO: add citation
-    @property
-    def enthalpy_of_vaporization(self) -> float:
-        if len(self.db_positions) == 0:
-            return 5.36 * self.num_carbons + 37.1
-        else:
-            return 5.91 * self.num_carbons + 26.4
-
-    # ln(p/p0) where p0 = 101325 pa
-    @property
-    def ln_vapor_pressure(self) -> float:
-        return -1.01 * self.num_carbons - 3.2
-    
-    # need to find p
-    @property
+    # find vapor pressure based on temperature
     def vapor_pressure(self, T) -> float:
-        return 101325 * np.exp(self.ln_vapor_pressure) * np.exp(
-            (self.enthalpy_of_vaporization / 0.008314462618) * ((1 / T) - (1 / 298.15))
-        )
+        # data fit from Chickos 2015 and Ceriani & Meirelles 2004
+        n = self.num_carbons
+        A = 8.502 - 0.219*n
+        B = 1690 + 230*n
+        C = -108 - 1.5*n
+        P_bar = 10 ** (A - B / (T + C))
+        return P_bar * 1e5  # convert from bar to Pa
     
     @property
     def name(self) -> str:
@@ -722,11 +711,10 @@ class Glyceride:
 
     # find vapor pressure based on temperature
     def vapor_pressure(self, T) -> float:
+        # THIS IS STILL WRONG!! TODO: FIND A BETTER MODEL
         return np.exp(
-            (-self.gibbs_of_vaporitzation / (0.008314 * 298.15 * np.log(10)))
-            + (
-                (self.enthalpy_of_vaporitzation / (0.008314 * np.log(10)))
-                * ((1 / 298.15) - (1 / T))
+            (-self.gibbs_of_vaporitzation / (8314 * 298.15))          + (
+                (self.enthalpy_of_vaporitzation / (8314*298.15)) * ((1 / 298.15) - (1 / T))
             )
         )
 
@@ -870,13 +858,13 @@ class Glyceride:
         fa = [x for x in self.sn if x]
         # mag
         if len(fa) == 1:
-            return DELTA_H_MAG + fa[0].num_carbons * 2.09 + 31.4
+            return DELTA_H_MAG + fa[0].num_carbons * 2093479.64 + 31397826.69
         # dag
         elif len(fa) == 2:
-            return (DELTA_H_DAG + sum(fa_i.num_carbons * 2.09 + 31.4 for fa_i in fa))
+            return (DELTA_H_DAG + sum(fa_i.num_carbons * 2093479.64 + 31397826.69 for fa_i in fa))
         # tag
         else:
-            return (DELTA_H_TAG + sum(fa_i.num_carbons * 2.09 + 31.4 for fa_i in fa))
+            return (DELTA_H_TAG + sum(fa_i.num_carbons * 2093479.64 + 31397826.69 for fa_i in fa))
 
     # gibbs free energy of vaporization for mags, dags, tags
     @property
@@ -884,13 +872,13 @@ class Glyceride:
         fa = [x for x in self.sn if x]
         # mag
         if len(fa) == 1:
-            return DELTA_G_MAG + fa[0].num_carbons * 1.66 + 22
+            return DELTA_G_MAG + fa[0].num_carbons * 1653142.78 + 24008494.2
         # dag
         elif len(fa) == 2:
-            return (DELTA_G_DAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
+            return (DELTA_G_DAG + sum(fa_i.num_carbons * 1653142.78 + 24008494.2 for fa_i in fa))
         # tag
         else:
-            return (DELTA_G_TAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
+            return (DELTA_G_TAG + sum(fa_i.num_carbons * 1653142.78 + 24008494.2 for fa_i in fa))
 
     @property
     def chain_lengths(self) -> Tuple[int, int, int]:
