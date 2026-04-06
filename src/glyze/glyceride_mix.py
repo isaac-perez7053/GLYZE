@@ -125,35 +125,51 @@ def _clip_small_quantity(qty: float, atol: float = 1e-12) -> float:
     return 0.0 if qty < 0 or abs(qty) <= atol else qty
 
 
-def water_vapor_pressure(T: float):
+def water_vapor_pressure(T_K: float) -> float:
     """
-    Calculate water vapor pressure in mmHg using Antoine equation.
-    T is temperature in Celsius.
-    P is pressure in atm (default 1.0 atm).
+    Water vapor pressure via the Antoine equation.
+
+    Parameters
+    ----------
+    T_K : float
+        Temperature in Kelvin.
+
+    Returns
+    -------
+    float
+        Vapor pressure in Pa.
+
+    References
+    ----------
+    Antoine parameters from the NIST Chemistry WebBook (https://webbook.nist.gov)
     """
-    # Antoine constants for water (from NIST)
-    A, B, C = 8.07131, 1730.63, 233.426
-    # Calculate vapor pressure in mmHg
-    log_p = A - B / (T + C)
-    p_mmHg = 10**log_p
-    # Convert to atm if needed
-    return p_mmHg / 760.0 
+    T_C = T_K - 273.15
+    if T_C < 100:
+        A, B, C = 8.07131, 1730.63, 233.426
+    else:
+        A, B, C = 8.14019, 1810.94, 244.485
+    p_mmHg = 10 ** (A - B / (T_C + C))
+    return p_mmHg * 133.322  # mmHg -> Pa
 
 
-def glycerol_vapor_pressure(T: float):
+def glycerol_vapor_pressure(T_K: float) -> float:
     """
-    Calculate glycerol vapor pressure in mmHg using Antoine equation.
-    T is temperature in Celsius.
-    P is pressure in atm (default 1.0 atm).
-    """
-    # Antoine constants for glycerol (from NIST)
-    A, B, C = 7.28542, 1385.03, 220.79
-    # Calculate vapor pressure in mmHg
-    log_p = A - B / (T + C)
-    p_mmHg = 10**log_p
-    # Convert to atm if needed
-    return p_mmHg / 760.0
+    Glycerol vapor pressure via the Antoine equation.
 
+    Parameters
+    ----------
+    T_K : float
+        Temperature in Kelvin.
+
+    Returns
+    -------
+    float
+        Vapor pressure in Pa.
+    """
+    T_C = T_K - 273.15
+    A, B, C = 12.89896, 6240.54, 331.126
+    p_mmHg = 10 ** (A - B / (T_C + C))
+    return p_mmHg * 133.322  # mmHg -> Pa
 
 class MixtureComponent:
     """"""
@@ -218,6 +234,13 @@ class GlycerideMix:
 
         # Take in a dictionary or iterable pair to create a list of tuples
         pairs = _as_pairs(mix)
+
+        # Ensure every component is wrapped in MixtureComponent
+        pairs = [
+            (comp if isinstance(comp, MixtureComponent) else MixtureComponent(comp), qty)
+            for comp, qty in pairs
+        ]
+
         merged_qty: Dict[str, float] = {}
         rep_obj: Dict[str, MixtureComponent] = {}
 

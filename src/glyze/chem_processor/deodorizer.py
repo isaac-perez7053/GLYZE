@@ -68,65 +68,75 @@ class Deodorizer:
                 # Bracket still failed — fall back to near-zero (fully stripped)
                 return tol
 
-    @staticmethod
-    def deodorizer(mix: GlycerideMix, S: float, T: float, P: float):
+    def deodorizer(mix: GlycerideMix, S: float, T: float, P: float,
+                entrainment: float = 0.0, plot: bool = False) -> GlycerideMix:
         """
-        Pass the GlycerideMixture through the deodorizer a single time.
-        Works on a snapshot of current quantities so self.mix is never mutated.
+        Parameters
+        ----------
+        entrainment : float
+            Fraction of each component lost to mechanical carryover
+            (0.0-0.05 typical). Applied uniformly to all species
+            after vapor stripping.
         """
-        total_final = 0.0
-        result_quantities = {}
+        result_pairs = []
 
         for component, Va in mix.mix.items():
             A = P / (component.vapor_pressure(T))
             V0 = Deodorizer._solve_V0(Va, S, A)
-            result_quantities[component] = V0
-            total_final += V0
-        return (result_quantities, total_final)
+            # Apply mechanical entrainment to whatever remains
+            V0 *= (1.0 - entrainment)
+            result_pairs.append((component, V0))
 
-    def plot(self, mix):
-        return
+        final_mix = GlycerideMix(result_pairs, units=mix.units, sort=True)
+        
+        if plot:
+            names, qi_vals, qf_vals = [], [], []
+            for comp in mix.mix:
+                if not isinstance(comp.component, (Glyceride, FattyAcid)):
+                    continue
+                names.append(comp.name)
+                qi_vals.append(mix.mix[comp])
+                qf_vals.append(final_mix.mix.get(comp, 0.0))
+
+            fig = go.Figure([
+                go.Bar(name="Initial", x=names, y=qi_vals),
+                go.Bar(name="Final",   x=names, y=qf_vals),
+            ])
+            fig.update_layout(
+                barmode="group",
+                xaxis_title="Species",
+                yaxis_title="Moles",
+                xaxis_tickangle=-45,
+            )
+            fig.show()
+
+        return final_mix
 
     @staticmethod
     def opt_deodorizer(
         mix: GlycerideMix,
-        T: float,               # Temperature, [K]
-        P: float,               # System pressure, [Pa]
-        target: float = 0.001,  # target fatty acid fraction after deodorization [mol/mol]
-        sbounds=(1e-6, 5),      # bounds for steam factor S [mol/mol oil]
-        tol=1e-6,               # tolerance for bisection method convergence
-        nsteps=100,             # number of steps for bisection method
-        verbose=False,          # print results or not
-        plot=False              # plot results or not
+        T: float,
+        P: float,
+        target: float = 0.001,
+        sbounds=(1e-6, 5),
+        tol=1e-6,
+        nsteps=100,
+        verbose=False,
+        plot=False
     ):
-        """
-        Perform deodorization on a glyceride mix at a given temperature and pressure.
-
-        Parameters:
-        -----------
-            T (float): Temperature in Kelvin.
-            P (float): Pressure in Pa.
-            target (float): Target fatty acid mole fraction after deodorization.
-            sbounds (tuple): Search bounds for steam factor S [mol steam / mol oil].
-            tol (float): Bisection convergence tolerance.
-            nsteps (int): Maximum bisection iterations.
-            verbose (bool): Print diagnostics.
-            plot (bool): Plot results.
-
-        Returns:
-        -----------
-            float: Optimal steam factor S_mid.
-        """
-        # sbounds must be mutable for bisection
         sbounds = list(sbounds)
 
         def FA_fraction(S):
-            x, total_final = Deodorizer.deodorizer(mix, S, T, P)
-            return sum(qty for comp, qty in x.items() if comp.component in mix.fa_list) / total_final
+            result_mix = Deodorizer.deodorizer(mix, S, T, P)
+            total = sum(result_mix.quantities)
+            fa_total = sum(
+                qty for comp, qty in result_mix.mix.items()
+                if comp.component in mix.fa_list
+            )
+            return fa_total / total
 
         S_mid = 0.5 * (sbounds[0] + sbounds[1])
 
-        # Bisection to find the steam factor S that achieves the target FA fraction
         for _ in range(nsteps):
             S_mid = 0.5 * (sbounds[0] + sbounds[1])
             FA_mid = FA_fraction(S_mid)
@@ -139,16 +149,14 @@ class Deodorizer:
             else:
                 sbounds[1] = S_mid
 
-        # Snapshot initial quantities before mutation
         initial_x = {comp: qty for comp, qty in mix.mix.items()}
         initial_total = sum(initial_x.values())
 
-        final_x, total_final = Deodorizer.deodorizer(mix, S_mid, T, P)
+        final_mix = Deodorizer.deodorizer(mix, S_mid, T, P)
+        final_total = sum(final_mix.quantities)
 
-        # Update mix.mix and mix.quantities with final absolute quantities.
-        # change_qty only writes to self.quantities (not self.mix), so we
-        # update both data structures here directly.
-        for component, qty in final_x.items():
+        # Update the original mix in place
+        for component, qty in final_mix.mix.items():
             mix.mix[component] = qty
             key = _canonical_key(_canonical_component(component))
             if key in mix.index_by_key:
@@ -158,17 +166,21 @@ class Deodorizer:
             print("\n=== Steam Optimization Results ===")
             print(f"Optimal steam factor S: {S_mid:.6f}")
             print(f"Steam % of oil: {2 * S_mid:.2f}%")
-            print(f"\nFinal fatty acid fraction: {sum(qty for comp, qty in final_x.items() if comp.component in mix.fa_list) / total_final:.6f}")
+            fa_final = sum(
+                qty for comp, qty in final_mix.mix.items()
+                if comp.component in mix.fa_list
+            )
+            print(f"\nFinal fatty acid fraction: {fa_final / final_total:.6f}")
             print(f"\n{'Species':30s} {'Initial':>12s} {'Final':>12s} {'Removed':>12s}")
             print("-" * 68)
             for comp in initial_x:
                 qi = initial_x[comp]
-                qf = final_x[comp]
+                qf = final_mix.mix.get(comp, 0.0)
                 print(f"{comp.name:30s} {qi:12.6f} {qf:12.6f} {qi - qf:12.6f}")
             print("\nMaterial balance:")
             print(f"Initial total moles: {initial_total:.6f}")
-            print(f"Final total moles:   {total_final:.6f}")
-            print(f"Total removed:       {initial_total - total_final:.6f}")
+            print(f"Final total moles:   {final_total:.6f}")
+            print(f"Total removed:       {initial_total - final_total:.6f}")
 
         if plot:
             names, qi_vals, qf_vals = [], [], []
@@ -177,7 +189,7 @@ class Deodorizer:
                     continue
                 names.append(comp.name)
                 qi_vals.append(initial_x[comp])
-                qf_vals.append(final_x[comp])
+                qf_vals.append(final_mix.mix.get(comp, 0.0))
 
             fig = go.Figure([
                 go.Bar(name="Initial", x=names, y=qi_vals),
