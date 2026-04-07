@@ -117,6 +117,7 @@ class Deodorizer:
         mix: GlycerideMix,
         T: float,
         P: float,
+        entrainment = 0.6,
         target: float = 0.001,
         sbounds=(1e-6, 5),
         tol=1e-6,
@@ -127,7 +128,7 @@ class Deodorizer:
         sbounds = list(sbounds)
 
         def FA_fraction(S):
-            result_mix = Deodorizer.deodorizer(mix, S, T, P)
+            result_mix = Deodorizer.deodorizer(mix, S, T, P, entrainment)
             total = sum(result_mix.quantities)
             fa_total = sum(
                 qty for comp, qty in result_mix.mix.items()
@@ -152,7 +153,7 @@ class Deodorizer:
         initial_x = {comp: qty for comp, qty in mix.mix.items()}
         initial_total = sum(initial_x.values())
 
-        final_mix = Deodorizer.deodorizer(mix, S_mid, T, P)
+        final_mix = Deodorizer.deodorizer(mix, S_mid, T, P, entrainment)
         final_total = sum(final_mix.quantities)
 
         # Update the original mix in place
@@ -205,7 +206,3 @@ class Deodorizer:
             fig.show()
 
         return S_mid
-
-
-if __name__ == "__main__":
-    """Example usage of the Deodorizer class"""
