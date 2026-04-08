@@ -128,13 +128,45 @@ def _fa_key(fa: Optional[FattyAcid]) -> tuple:
 @dataclass(frozen=True)
 class FattyAcid:
     """
-    Immutable description of a fatty acid chain.
+    Fatty acid chain is built, charteristics of them are classified here and is used throughout
+    the package. 
 
     Attributes
     ----------
+    (length=[int], db_position=(Tuple[int, ]), db_stero(Tuple[int, ]), branches(Tuple[Tuple[int, str]])):
+    length, is for how many carbon chains the free fatty acid contains. db is the double bonds that
+    is in the free fatty acid. They can be between any carbon (1 to 24). branches is where the fatty acid
+    splits into two strands of carbon chains.
 
-    Functions
+    Fatty acids must have a length [int]
+
+    Class Methods
     ---------
+
+    from_name: create a fatty acid using the naming scheme.
+
+    Methods
+    ---------
+
+    canonical: the normalized fatty acid/object, to make sure it is the same fatty acid
+
+    to_rdkit_mol: takes the molecule generated in rdkit and calculates it into moles
+
+    vapor_pressure: calculates the vapor pressure of the fatty acid at a temperture, units in Pascals
+
+    Properties
+    ---------
+    num_carbons: indicats the total amount of carbons in the free fatty acid
+
+    name: generates an identification of the fatty acid, using the specified naming convention
+    
+    [Cashed]:
+    _cached_rdkit_mol: the stored molecules moles
+
+    _cached_optimized_rdkit_mol: optimize the stored molecules in moles
+
+    molar_mass: calculate the molar mass of the molecules rdkit generates (fatty acid)
+
     """
 
     # Use of fields to ensure mutable objects are not shared between instances
@@ -167,7 +199,26 @@ class FattyAcid:
     @classmethod
     def from_name(cls, fa_str: str) -> Optional[FattyAcid]:
         """
-        Return the fatty acid using its unique name
+        Create a Fatty Acid using the naming scheme:
+
+        Fatty acid format:
+
+        N{CC}D{DD}[P{pp}{S}{pp}{S}...][M{pp}...][OH{pp}...]
+
+        N{CC} - Number of Carbons like 06 or 12
+        D{DD} - Number of double bonds
+        [P{pp}(S){pp{S}...] - double bond position and stereo where S is trans and Z is cis (e.g. 06Z )
+        M{pp}... -  Methyl branches at position pp
+        OH{pp}... - Hydroxyl branches at position pp.
+
+        Example: N18D1P09Z means 18 carbons, 1 double bond at position 9 with Z (cis) stereo and is oleic acid.
+
+        Args:
+            name (str): Name of the fatty acid in the specified format.
+
+        Returns:
+            FattyAcid: The corresponding FattyAcid object.
+
         """
 
         # Empty case
@@ -242,6 +293,10 @@ class FattyAcid:
         """
         Returns a canonical (normalized) version of the fatty acid. Ensures that
         object signature is identical for equivalent fatty acids.
+
+        Parameters: None
+
+        Returns: FattyAcid
         """
 
         def norm_st(s: str) -> str:
@@ -367,6 +422,13 @@ class FattyAcid:
 
     # find vapor pressure based on temperature
     def vapor_pressure(self, T) -> float:
+        """
+        Returns the vapor pressure of the fatty acid at a temperture
+
+        Parameters: Temperature in Kelvin 
+
+        Returns: vapor pressure (float)
+        """
         # data fit from Chickos 2015 and Ceriani & Meirelles 2004
         n = self.num_carbons
         A = 8.502 - 0.219*n
@@ -417,11 +479,30 @@ class Glyceride:
     Methods:
     --------
     add_fatty_acid: Add a fatty acid to the glyceride and return a deepcopy of the new glyceride.
+    signature_tuple: canoncial, detechs the glyceride entered
+    remove_fatty_acid: Remove a fatty acid to the glyceride and return a deepcopy of the new glyceride.
+    swap_fatty_acids: Swaps two of the fatty acids in the glycerides and returns a deepcopy of the new glyceride.
+    to_rdkit_mol: Takes the molecule build in rdkit and returns the chemical moles for simulation purposes or prebuilt code purposes.
+    rdkit_mol_to_gaussian_gjf: The molecule generated in rdkit and puts it gaussian for Molecular Dynamic simulations.
+    vapor_pressure: The vapor pressure for the glyceride at any given temperature. 
 
+
+    [Static Method]:
+    mol_to_pdb: Convert an RDKit Mol object into a PDB file at the specified path.
+    The file will persist until manually deleted.
+    
 
     Properties:
     -----------
     molar_mass (float): Calculate the molar mass of a glyceride in g/mol
+    num_fatty_acids (int): Finds the number of fatty acids in a glyceride (1, 2, or 3 fatty acids)
+    num_carbons (int): Finds the number of carbons in the glyceride molecule (3 to 75 carbons or more)
+    enthalpy_of_vaporitzation (float): the enthalphy of vaporization of a glyceride (kj/mol)
+    gibbs_of_vaporization (float): the gibbs free energy of a glyceride (kj/mol)
+    chain_lengths (Tuple): Tuple of chain lengths (0 if empty) in sn-1, sn-2, sn-3 order.
+    name (str): Generate a standardized name for the glycerides
+
+
     """
 
     def __init__(
@@ -711,6 +792,13 @@ class Glyceride:
 
     # find vapor pressure based on temperature
     def vapor_pressure(self, T) -> float:
+        """
+        Returns the vapor pressure of the fatty acid at a temperture
+
+        Parameters: Temperature in Kelvin 
+
+        Returns: vapor pressure (float)
+        """
         # THIS IS STILL WRONG!! TODO: FIND A BETTER MODEL
         return np.exp(
             (-self.gibbs_of_vaporitzation / (8314 * 298.15))          + (
@@ -855,6 +943,13 @@ class Glyceride:
     # enthalphy of vaportization for mags, dags, tags
     @property
     def enthalpy_of_vaporitzation(self) -> float:
+        """
+        Returns the enthalpy of vaporitzation
+
+        Parameters: None
+
+        Returns: Enthalpy of vaporization
+        """
         fa = [x for x in self.sn if x]
         # mag
         if len(fa) == 1:
@@ -869,6 +964,13 @@ class Glyceride:
     # gibbs free energy of vaporization for mags, dags, tags
     @property
     def gibbs_of_vaporitzation(self) -> float:
+        """
+        Returns the gibbs free energy of the glyceride
+
+        Parameters: none
+
+        Returns: gibbs free energy
+        """
         fa = [x for x in self.sn if x]
         # mag
         if len(fa) == 1:
@@ -941,9 +1043,25 @@ class Glyceride:
 
 
 class SymmetricGlyceride(Glyceride):
-    """Glyceride where sn-1 and sn-3 are considered equivalent for equality/hash."""
+    """Glyceride where sn-1 and sn-3 are considered equivalent for equality/hash.
+    Methods
+    -------
+    signature_tuples: lists the tuples to return the glyceride based on the name
+
+    Property
+    --------
+    name: generates a name for the glyceride
+
+    """
 
     def signature_tuple(self) -> tuple:
+        """
+        Lists the tuples of the glyceride to check if they're symmetrical
+
+        Parameters: None
+
+        Returns: tuple
+        """
         fa1, fa2, fa3 = self.sn
         left, right = sorted((fa1, fa3), key=_fa_key)
         parts = []
