@@ -316,6 +316,98 @@ class FattyAcid:
         # Ensure branches are also sorted
         branches = tuple(sorted((int(p), str(lbl)) for p, lbl in self.branches))
         return FattyAcid(self.length, positions, stereo, branches)
+    
+    # def vapor_pressure(self, T: float) -> float:
+    #     """
+    #     Calculate the vapor pressure of the fatty acid at temperature T (K)
+    #     """
+    #     p_sum = 0
+    #     f0 = 0.001
+    #     alpha = 3.4443
+    #     beta = -499.3
+    #     gamma = 0.6136
+    #     delta = -0.00517
+    #     # Calculate component vapor pressure of -COOH group
+    #     A = 8.0734 + (45.017 * 0.00399) + (alpha * f0)
+    #     B = -20478.3 + (45.017 * -639929) + (beta * f0)
+    #     C = 0.0359 + (45.017 * -0.00106) + (gamma * f0)
+    #     D = -0.00207 + (45.017 * 0.00001) + (delta * f0)
+    #     p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
+
+    #     # Calculate component vapor pressure of CH3 gruop
+    #     A = -117.5 + (15.035 * 0.00338) + (alpha * f0)
+    #     B = 7232.3 + (15.035 * -63.3963) + (beta * f0)
+    #     C = -22.7929 + (15.035 * -0.00106) + (gamma * f0)
+    #     D = 0.0361 + (15.035 * 0.000015) + (delta * f0)
+    #     p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
+
+    #     # Calculate component vapor pressure of CH2 groups
+    #     N = self.num_carbons - 2
+    #     if N > 0:
+    #         A = N * (8.4816 + (14.027 * -0.00091)) + (alpha * f0)
+    #         B = N * (-10987.8 + (14.027 * 6.7157)) + (beta * f0)
+    #         C = N * (1.4067 + (14.027 * 0.0000041)) + (gamma * f0)
+    #         D = N * (-0.00167 + (14.027 * -0.00000126)) + (delta * f0)
+    #         p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
+        
+    #     return p_sum
+
+    def vapor_pressure(self, T_K: float) -> float:
+        """
+        Estimate vapor pressure using the Ceriani & Meirelles (2004)
+        group-contribution method (Eqs. A.16-A.20, Table A4).
+        """
+        n = self.num_carbons
+
+        # Group parameters: (A1k, B1k, C1k, D1k, A2k, B2k, C2k, D2k)
+        GP = {
+            'CH3':      (-117.5,    7232.3, -22.7939,  0.0361,
+                        0.00338, -63.3963,  -0.00106,  0.000015),
+            'CH2':      (  8.4816, -10987.8,   1.4067, -0.00167,
+                        -0.00091,   6.7157,   0.000041, -0.00000126),
+            'COOH':     (  8.0734, -20478.3,   0.0359, -0.00207,
+                        0.00399, -63.9929,  -0.00132,  0.00001),
+            'CH=CH_cis':(  2.4317,   1410.3,   0.7868, -0.004,
+                        0,         0,         0,        0),
+        }
+
+        # Molecular weight: CnH(2n)O2 minus 2H per double bond
+        n_db = len(self.db_positions)
+        Mi = 14.027 * n + 32.0 - 2.016 * n_db
+
+        # Group counts
+        n_CH2 = n - 2 - 2 * n_db
+        groups = [('CH3', 1), ('CH2', n_CH2), ('COOH', 1)]
+        if n_db > 0:
+            groups.append(('CH=CH_cis', n_db))
+
+        # Compound-specific parameters for fatty acids
+        f0, f1, s0, s1 = 0.001, 0.0, 0.0, 0.0
+
+        # N_CT = total carbons, N_CS = substitute fraction carbons (0 for free FA)
+        N_CT = n
+        N_CS = 0
+
+        # Build A', B', C', D' (Eqs. A.17–A.20)
+        Ap = Bp = Cp = Dp = 0.0
+        for grp, Nk in groups:
+            A1k, B1k, C1k, D1k, A2k, B2k, C2k, D2k = GP[grp]
+            Ap += Nk * (A1k + Mi * A2k)
+            Bp += Nk * (B1k + Mi * B2k)
+            Cp += Nk * (C1k + Mi * C2k)
+            Dp += Nk * (D1k + Mi * D2k)
+
+        # Q correction terms (alpha, beta, gamma, delta)
+        corr = f0 + N_CT * f1
+        Ap += 3.4443 * corr + (s0 + N_CS * s1)
+        Bp += -499.3 * corr
+        Cp += 0.6136 * corr
+        Dp += -0.00517 * corr
+
+        # Eq. A.16
+        return np.exp(Ap + Bp / (T_K ** 1.5) - Cp * np.log(T_K) - Dp * T_K)
+
+
 
     def _build_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
         """
@@ -790,21 +882,99 @@ class Glyceride:
         with open(gjf_path, "w") as f:
             f.write("\n".join(lines))
 
-    # find vapor pressure based on temperature
-    def vapor_pressure(self, T) -> float:
+    def vapor_pressure(self, T_K: float) -> float:
         """
-        Returns the vapor pressure of the fatty acid at a temperture
+        Estimate glyceride vapor pressure using the Ceriani & Meirelles
+        (2004) group-contribution method (Eqs. A.16-A.20, Table A4).
 
-        Parameters: Temperature in Kelvin 
-
-        Returns: vapor pressure (float)
         """
-        # THIS IS STILL WRONG!! TODO: FIND A BETTER MODEL
-        return np.exp(
-            (-self.gibbs_of_vaporitzation / (8314 * 298.15))          + (
-                (self.enthalpy_of_vaporitzation / (8314*298.15)) * ((1 / 298.15) - (1 / T))
-            )
-        )
+        # Group parameters: (A1k, B1k, C1k, D1k, A2k, B2k, C2k, D2k)
+        GP = {
+            'CH3':       (-117.5,    7232.3, -22.7939,  0.0361,
+                        0.00338, -63.3963,  -0.00106,  0.000015),
+            'CH2':       (  8.4816,-10987.8,   1.4067, -0.00167,
+                        -0.00091,   6.7157,  0.000041, -0.00000126),
+            'CH=CH_cis': (  2.4317,  1410.3,   0.7868, -0.004,
+                            0,         0,        0,        0),
+            'COO':       (  1.843,    526.5,   0.6584, -0.00368,
+                            0,         0,        0,        0),
+            'OH':        ( 28.4723,-16694,     3.257,    0,
+                            0.00485,   0,        0,        0),
+            'glycerol':  (688.3,   -349293,  122.5,    -0.1814,
+                        -0.00145,   0,        0,        0),
+        }
+
+        fa = [x for x in self.sn if x is not None]
+        if not fa:
+            raise ValueError("Glyceride has no fatty acid chains")
+
+        n_fa = len(fa)
+
+        # Molecular weight of the glyceride
+        Mi = 92.094  # glycerol
+        for f in fa:
+            fa_mw = 14.027 * f.num_carbons + 32.0 - 2.016 * len(f.db_positions)
+            Mi += fa_mw - 18.015  # subtract water per ester bond
+
+        # Total carbons (all FA chains + 3 glycerol carbons)
+        N_CT = sum(f.num_carbons for f in fa) + 3
+        N_CS = 0  # no substitute fraction for acylglycerols
+
+        # Count functional groups
+        total_CH3 = 0
+        total_CH2 = 0
+        total_db = 0
+
+        for f in fa:
+            n_db = len(f.db_positions)
+            total_CH3 += 1
+            total_CH2 += f.num_carbons - 2 - 2 * n_db
+            total_db += n_db
+
+        groups = [
+            ('glycerol', 1),
+            ('CH3', total_CH3),
+            ('CH2', total_CH2),
+            ('COO', n_fa),
+        ]
+        if total_db > 0:
+            groups.append(('CH=CH_cis', total_db))
+
+        # Free hydroxyl groups on un-esterified glycerol positions
+        n_free_oh = 3 - n_fa
+        if n_free_oh > 0:
+            groups.append(('OH', n_free_oh))
+
+        # Compound-specific parameters for acylglycerols
+        f0, f1, s0, s1 = 0.0, 0.0, 0.0, 0.0
+
+        # Build A', B', C', D' (Eqs. A.17–A.20)
+        Ap = Bp = Cp = Dp = 0.0
+        for grp, Nk in groups:
+            A1k, B1k, C1k, D1k, A2k, B2k, C2k, D2k = GP[grp]
+            Ap += Nk * (A1k + Mi * A2k)
+            Bp += Nk * (B1k + Mi * B2k)
+            Cp += Nk * (C1k + Mi * C2k)
+            Dp += Nk * (D1k + Mi * D2k)
+
+        # Q correction terms
+        corr = f0 + N_CT * f1
+        Ap += 3.4443 * corr + (s0 + N_CS * s1)
+        Bp += -499.3 * corr
+        Cp += 0.6136 * corr
+        Dp += -0.00517 * corr
+
+        # Eq. A.16
+        return np.exp(Ap + Bp / (T_K ** 1.5) - Cp * np.log(T_K) - Dp * T_K)
+
+    # # find vapor pressure based on temperature
+    # def vapor_pressure(self, T) -> float:
+    #     # THIS IS STILL WRONG!! TODO: FIND A BETTER MODEL
+    #     return np.exp(
+    #         (-self.gibbs_of_vaporitzation / (8314 * 298.15))          + (
+    #             (self.enthalpy_of_vaporitzation / (8314*298.15)) * ((1 / 298.15) - (1 / T))
+    #         )
+    #     )
 
     def _add_branch_methyl(self, rw: Chem.RWMol, carbon_idx: int) -> None:
         """Attach a methyl (-CH3) to the given carbon atom index."""
@@ -962,25 +1132,18 @@ class Glyceride:
             return (DELTA_H_TAG + sum(fa_i.num_carbons * 2093479.64 + 31397826.69 for fa_i in fa))
 
     # gibbs free energy of vaporization for mags, dags, tags
-    @property
-    def gibbs_of_vaporitzation(self) -> float:
-        """
-        Returns the gibbs free energy of the glyceride
-
-        Parameters: none
-
-        Returns: gibbs free energy
-        """
-        fa = [x for x in self.sn if x]
-        # mag
-        if len(fa) == 1:
-            return DELTA_G_MAG + fa[0].num_carbons * 1653142.78 + 24008494.2
-        # dag
-        elif len(fa) == 2:
-            return (DELTA_G_DAG + sum(fa_i.num_carbons * 1653142.78 + 24008494.2 for fa_i in fa))
-        # tag
-        else:
-            return (DELTA_G_TAG + sum(fa_i.num_carbons * 1653142.78 + 24008494.2 for fa_i in fa))
+    # @property
+    # def gibbs_of_vaporitzation(self) -> float:
+    #     fa = [x for x in self.sn if x]
+    #     # mag
+    #     if len(fa) == 1:
+    #         return DELTA_G_MAG + fa[0].num_carbons * 1.66 + 22
+    #     # dag
+    #     elif len(fa) == 2:
+    #         return (DELTA_G_DAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
+    #     # tag
+    #     else:
+    #         return (DELTA_G_TAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
 
     @property
     def chain_lengths(self) -> Tuple[int, int, int]:

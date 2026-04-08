@@ -34,3 +34,9 @@ src/glyze/ui/pages/Deodorizer.py
 src/glyze/ui/pages/Glyceride_Mix.py
 src/glyze/ui/pages/SFC_Calculator.py
 src/glyze/ui/pages/Viscosity_Model.py
+tests/test_glyceride.py
+tests/test_glyceride_mix.py
+tests/test_glyceride_opls_pipeline.py
+tests/test_gmxapi.py
+tests/test_gmxapi_wrapper.py
+tests/test_multiwfn_cm5.py
