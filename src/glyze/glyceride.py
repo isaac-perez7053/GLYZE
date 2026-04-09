@@ -317,40 +317,6 @@ class FattyAcid:
         branches = tuple(sorted((int(p), str(lbl)) for p, lbl in self.branches))
         return FattyAcid(self.length, positions, stereo, branches)
 
-    # def vapor_pressure(self, T: float) -> float:
-    #     """
-    #     Calculate the vapor pressure of the fatty acid at temperature T (K)
-    #     """
-    #     p_sum = 0
-    #     f0 = 0.001
-    #     alpha = 3.4443
-    #     beta = -499.3
-    #     gamma = 0.6136
-    #     delta = -0.00517
-    #     # Calculate component vapor pressure of -COOH group
-    #     A = 8.0734 + (45.017 * 0.00399) + (alpha * f0)
-    #     B = -20478.3 + (45.017 * -639929) + (beta * f0)
-    #     C = 0.0359 + (45.017 * -0.00106) + (gamma * f0)
-    #     D = -0.00207 + (45.017 * 0.00001) + (delta * f0)
-    #     p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
-
-    #     # Calculate component vapor pressure of CH3 gruop
-    #     A = -117.5 + (15.035 * 0.00338) + (alpha * f0)
-    #     B = 7232.3 + (15.035 * -63.3963) + (beta * f0)
-    #     C = -22.7929 + (15.035 * -0.00106) + (gamma * f0)
-    #     D = 0.0361 + (15.035 * 0.000015) + (delta * f0)
-    #     p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
-
-    #     # Calculate component vapor pressure of CH2 groups
-    #     N = self.num_carbons - 2
-    #     if N > 0:
-    #         A = N * (8.4816 + (14.027 * -0.00091)) + (alpha * f0)
-    #         B = N * (-10987.8 + (14.027 * 6.7157)) + (beta * f0)
-    #         C = N * (1.4067 + (14.027 * 0.0000041)) + (gamma * f0)
-    #         D = N * (-0.00167 + (14.027 * -0.00000126)) + (delta * f0)
-    #         p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
-
-    #     return p_sum
 
     def vapor_pressure(self, T_K: float) -> float:
         """
@@ -599,8 +565,6 @@ class Glyceride:
     gibbs_of_vaporization (float): the gibbs free energy of a glyceride (kj/mol)
     chain_lengths (Tuple): Tuple of chain lengths (0 if empty) in sn-1, sn-2, sn-3 order.
     name (str): Generate a standardized name for the glycerides
-
-
     """
 
     def __init__(
