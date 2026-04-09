@@ -26,8 +26,12 @@ class Interesterifier:
         plucked: List[str],
         arranged: List[str],
     ):
-        if len(plucked) != len(list_of_glycerides) or len(arranged) != len(list_of_glycerides):
-            raise ValueError("plucked and arranged must have the same length as list_of_glycerides")
+        if len(plucked) != len(list_of_glycerides) or len(arranged) != len(
+            list_of_glycerides
+        ):
+            raise ValueError(
+                "plucked and arranged must have the same length as list_of_glycerides"
+            )
 
         unique_dags = OrderedSet()
         dag_lookup: Dict[Tuple[str, int], Tuple[str, SymmetricGlyceride]] = {}
@@ -87,7 +91,9 @@ class Interesterifier:
                 for fa in end:
                     empty_ends = [idx for idx in (0, 2) if dag.sn[idx] is None]
                     if not empty_ends:
-                        raise ValueError("Unexpected glyceride structure: no empty end position available.")
+                        raise ValueError(
+                            "Unexpected glyceride structure: no empty end position available."
+                        )
                     tg1 = dag.add_fatty_acid(index=empty_ends[0], fatty_acid=fa)
                     unique_tgs.add(tg1)
                     tg_lookup[(dag.name, fa.name)] = tg1
@@ -118,10 +124,12 @@ class Interesterifier:
         list_of_rxns = []
         init_ks = []
 
-        unique_dags, dag_lookup, removal_records, mid, end = Interesterifier._pluck_records(
-            list_of_glycerides, plucked, arranged
+        unique_dags, dag_lookup, removal_records, mid, end = (
+            Interesterifier._pluck_records(list_of_glycerides, plucked, arranged)
         )
-        unique_tgs, tg_lookup = Interesterifier._build_tg_lookup(unique_dags, removal_records, mid, end)
+        _, tg_lookup = Interesterifier._build_tg_lookup(
+            unique_dags, removal_records, mid, end
+        )
 
         for rec in removal_records:
             fa_name, dag = dag_lookup[(rec["tag"].name, rec["idx"])]
@@ -152,6 +160,7 @@ class Interesterifier:
         arranged: List[str],
         ks: List[float],
         chem_flag=False,
+        units: str = "moles",
     ) -> PKineticSim:
         """
         Will simulate the bath reaction for the given glyceride spieces.
@@ -170,16 +179,24 @@ class Interesterifier:
         ks_internal = []
 
         if len(initial_conc) != len(list_of_glycerides):
-            raise ValueError("initial_conc must have the same length as list_of_glycerides")
+            raise ValueError(
+                "initial_conc must have the same length as list_of_glycerides"
+            )
 
-        unique_dags, dag_lookup, removal_records, mid, end = Interesterifier._pluck_records(
-            list_of_glycerides, plucked, arranged
+        unique_dags, dag_lookup, removal_records, mid, end = (
+            Interesterifier._pluck_records(list_of_glycerides, plucked, arranged)
         )
-        unique_tgs, tg_lookup = Interesterifier._build_tg_lookup(unique_dags, removal_records, mid, end)
+        unique_tgs, tg_lookup = Interesterifier._build_tg_lookup(
+            unique_dags, removal_records, mid, end
+        )
 
         unique_species = list(OrderedSet.union(unique_dags, unique_tgs))
         midend = OrderedSet(mid + end)
-        init_tags = [init_tag.name for init_tag in list_of_glycerides if isinstance(init_tag, Glyceride)]
+        init_tags = [
+            init_tag.name
+            for init_tag in list_of_glycerides
+            if isinstance(init_tag, Glyceride)
+        ]
         fa_names = [fa.name for fa in midend]
         gly_names = [specie.name for specie in unique_species]
         species_names = [*fa_names, *OrderedSet(gly_names + init_tags)]
@@ -256,4 +273,5 @@ class Interesterifier:
             k_det=ks_internal,
             rxn_names=rxn_names,
             chem_flag=chem_flag,
+            units=units,
         )

@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from typing import Tuple
 from glyze.glyceride import Glyceride, FattyAcid, FattyAcid
-from glyze.glyceride_mix import GlycerideMix
+from glyze.glyceride_mix import GlycerideMix, MixtureComponent
 from dataclasses import dataclass
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
@@ -39,6 +39,7 @@ class PKineticSim:
     rxn_names: list
     chem_flag: bool
     overall_order: float | None = None
+    units: str = "moles"
 
     def S(self) -> np.ndarray:
         return self.prod_stoic - self.react_stoic
@@ -110,21 +111,33 @@ class PKineticSim:
 
         # Set publication-ready style
         import matplotlib as mpl
-        mpl.rcParams['font.family'] = 'serif'
-        mpl.rcParams['font.serif'] = 'Times New Roman'
-        mpl.rcParams['axes.linewidth'] = 1.5
-        mpl.rcParams['xtick.major.width'] = 1.5
-        mpl.rcParams['ytick.major.width'] = 1.5
-        mpl.rcParams['xtick.minor.width'] = 1.0
-        mpl.rcParams['ytick.minor.width'] = 1.0
-        mpl.rcParams['xtick.major.size'] = 6
-        mpl.rcParams['ytick.major.size'] = 6
-        mpl.rcParams['xtick.minor.size'] = 4
-        mpl.rcParams['ytick.minor.size'] = 4
+
+        mpl.rcParams["font.family"] = "serif"
+        mpl.rcParams["font.serif"] = "Times New Roman"
+        mpl.rcParams["axes.linewidth"] = 1.5
+        mpl.rcParams["xtick.major.width"] = 1.5
+        mpl.rcParams["ytick.major.width"] = 1.5
+        mpl.rcParams["xtick.minor.width"] = 1.0
+        mpl.rcParams["ytick.minor.width"] = 1.0
+        mpl.rcParams["xtick.major.size"] = 6
+        mpl.rcParams["ytick.major.size"] = 6
+        mpl.rcParams["xtick.minor.size"] = 4
+        mpl.rcParams["ytick.minor.size"] = 4
 
         # Colorblind-friendly color cycle
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-        mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=colors)
+        colors = [
+            "#1f77b4",
+            "#ff7f0e",
+            "#2ca02c",
+            "#d62728",
+            "#9467bd",
+            "#8c564b",
+            "#e377c2",
+            "#7f7f7f",
+            "#bcbd22",
+            "#17becf",
+        ]
+        mpl.rcParams["axes.prop_cycle"] = mpl.cycler(color=colors)
 
         idxs = (
             range(len(self.species_names))
@@ -139,8 +152,15 @@ class PKineticSim:
         plt.ylabel("Concentration", fontsize=18)
         plt.xticks(fontsize=16)
         plt.yticks(fontsize=16)
-        plt.grid(True, alpha=0.3, linestyle='--')
-        plt.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=14, frameon=True, fancybox=True, shadow=True)
+        plt.grid(True, alpha=0.3, linestyle="--")
+        plt.legend(
+            loc="center left",
+            bbox_to_anchor=(1.02, 0.5),
+            fontsize=14,
+            frameon=True,
+            fancybox=True,
+            shadow=True,
+        )
         plt.tight_layout()
         plt.show()
 
@@ -265,7 +285,46 @@ class PKineticSim:
         if self.sol.y.shape[0] != ns:
             raise ValueError("Solution shape does not match number of species")
 
-        initial_moles = list(self.init_state)
+        initial_values = list(self.init_state)
+        # Grab initial concentration, but first check units and convert into moles
+        if self.units == "Moles":
+            initial_moles = initial_values
+        elif self.units == "Grams":
+            initial_moles = []
+            for i, name in enumerate(self.species_names):
+                try:
+                    obj = MixtureComponent.from_name(name)
+                    molar_mass = obj.molar_mass
+                    initial_moles.append(initial_values[i] / molar_mass)
+                except Exception:
+                    raise ValueError(
+                        f"Unknown species '{name}' for mass-to-mole conversion."
+                    )
+        # Mass fractions option
+        elif self.units == "Mass Fractions":
+            total_mass = sum(initial_values)
+            if total_mass <= 0:
+                raise ValueError(
+                    "Total mass must be positive for mass fraction conversion."
+                )
+            initial_moles = []
+            for i, name in enumerate(self.species_names):
+                try:
+                    obj = MixtureComponent.from_name(name)
+                    molar_mass = obj.molar_mass
+
+                    # Find mass in grams then convert to moles
+                    mass = initial_values[i] * total_mass
+                    initial_moles.append(mass / molar_mass)
+                except Exception:
+                    raise ValueError(
+                        f"Unknown species '{name}' for mass fraction conversion."
+                    )
+        else:
+            raise ValueError(
+                f"Unsupported units '{self.units}'. Use 'moles', 'grams', or 'mass fractions'."
+            )
+
         final_moles = [float(x) for x in self.sol.y[:, -1]]
 
         # compute masses and carbon numbers
@@ -277,11 +336,11 @@ class PKineticSim:
 
             # handle special species
             lname = str(name).lower()
-            if lname in ("glycerol",):
+            if lname in ("Glycerol",):
                 molar_mass = 92.094
                 carbon_number = 3
                 display_name = "Glycerol"
-            elif lname in ("h2o", "water"):
+            elif lname in ("H2O", "water"):
                 molar_mass = 18.01528
                 carbon_number = 0
                 display_name = "H2O"
@@ -354,33 +413,18 @@ class PKineticSim:
         """
         if hasattr(self, "sol"):
             if hasattr(self, "species_names"):
-                list_of_gly = [
-                    (
-                        Glyceride.from_name(x)
-                        if x.count("_") == 3
-                        else FattyAcid.from_name(x)
-                    )
-                    for x in self.species_names[1:]
-                    if x not in ("H2O", "Glycerol")
+                list_of_components = [
+                    MixtureComponent.from_name(x) for x in self.species_names
                 ]
                 # Grab the final concentration of every species and create a list of them that
                 # correspond to the list of glycerides
 
                 # Cut off glycerol and H2O to match list_of_gly
-                list_of_conc = [
-                    x[-1]
-                    for i, x in enumerate(self.sol.y[1:], 1)
-                    if self.species_names[i] not in ("H2O", "Glycerol")
-                ]
-
-                # Append together glycerol and water
-                list_of_components = ["Glycerol", "H2O"]
-                list_of_all_conc = [self.sol.y[0][-1], self.sol.y[1][-1]]
-                list_of_components += list_of_gly
-                list_of_all_conc += list_of_conc
-
+                list_of_conc = [x for x in self.sol.y[:, -1]]
+                print([x for x in zip(list_of_components, list_of_conc)])
                 return GlycerideMix(
-                    mix=[x for x in zip(list_of_components, list_of_all_conc)]
+                    mix=[x for x in zip(list_of_components, list_of_conc)],
+                    units=self.units,
                 )
             else:
                 raise ValueError("Please define the name of the species")

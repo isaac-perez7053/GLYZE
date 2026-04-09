@@ -4,7 +4,7 @@ import numpy as np
 from glyze.glyceride import Glyceride, FattyAcid
 
 
-from glyze.ui.pages.Glyceride_Mix import MixRow
+from glyze.ui.pages.Glyceride_Mix import PAGE_CSS, MixRow, rows_to_display_df
 
 
 st.set_page_config(page_title="GLYZE — Batch Reactor", page_icon="🧈", layout="wide")
@@ -363,7 +363,24 @@ st.markdown(
 )
 
 
-# ---------- Shared helpers ----------
+HERO_HTML = """
+<div class="center glyze-hero">
+    <div class="glyze-logo">
+        <div class="glyze-word">GLYZE</div>
+        <div class="butter-badge">🧈</div>
+    </div>
+    <div class="glyze-tagline">
+        Build and export a glyceride mixture — add by name or by structure, edit concentrations, switch units.
+    </div>
+</div>
+<div class="glyze-divider"></div>
+"""
+
+
+st.markdown(PAGE_CSS, unsafe_allow_html=True)
+st.markdown(HERO_HTML, unsafe_allow_html=True)
+
+
 def get_mix_rows():
     return st.session_state.setdefault("mix_rows", [])
 
@@ -420,10 +437,13 @@ def merge_mix_rows(rows_a, rows_b):
         comp = unwrap_component(row.comp)
         name = comp_display_name(comp)
         if name not in merged:
-            merged[name] = {"comp": comp, "moles": 0.0}
-        merged[name]["moles"] += float(row.moles)
+            merged[name] = {"comp": comp, "Moles": 0.0}
+        merged[name]["Moles"] += float(row.moles)
 
-    return [MixRow(v["comp"], v["moles"]) for _, v in sorted(merged.items(), key=lambda kv: kv[0])]
+    return [
+        MixRow(v["comp"], v["Moles"])
+        for _, v in sorted(merged.items(), key=lambda kv: kv[0])
+    ]
 
 
 def initialize_reactor_state(prefix: str):
@@ -480,7 +500,9 @@ def build_mix_preview_dataframe(rows):
     return pd.DataFrame(
         {
             "Species": [comp_display_name(r.comp) for r in rows],
-            "Moles": [r.moles for r in rows],
+            f" {st.session_state.get('display_unit', 'Moles')}": [
+                r.moles for r in rows
+            ],
         }
     )
 
@@ -490,7 +512,9 @@ def build_carbon_number_distribution(sim: PKineticSim):
     from glyze.glyceride import Glyceride, FattyAcid
 
     if not hasattr(sim, "sol"):
-        raise ValueError("Simulation results not found. Please run the simulation first.")
+        raise ValueError(
+            "Simulation results not found. Please run the simulation first."
+        )
 
     carbon_rows = []
 
@@ -542,7 +566,9 @@ def build_carbon_number_distribution(sim: PKineticSim):
 
     total_mass = grouped_df["Final Mass (g)"].sum()
     if total_mass > 0:
-        grouped_df["Weight by Carbon Number"] = grouped_df["Final Mass (g)"] / total_mass
+        grouped_df["Weight by Carbon Number"] = (
+            grouped_df["Final Mass (g)"] / total_mass
+        )
     else:
         grouped_df["Weight by Carbon Number"] = 0.0
 
@@ -641,7 +667,9 @@ def show_simulation_results(prefix: str):
         carbon_df = build_carbon_number_distribution(sim)
 
         if carbon_df.empty:
-            st.warning("No carbon-number data could be constructed from the simulation output.")
+            st.warning(
+                "No carbon-number data could be constructed from the simulation output."
+            )
         else:
             import plotly.express as px
 
@@ -668,7 +696,9 @@ def show_simulation_results(prefix: str):
             st.download_button(
                 "Download Simulation Results",
                 data=csv_bytes,
-                file_name=csv_name + ".csv" if not csv_name.endswith(".csv") else csv_name,
+                file_name=(
+                    csv_name + ".csv" if not csv_name.endswith(".csv") else csv_name
+                ),
                 mime="text/csv",
                 use_container_width=True,
                 key=f"{prefix}_carbon_csv_download",
@@ -706,8 +736,9 @@ def render_interesterification_tab():
 
     st.write(f"Loaded {len(rows)} species from the current mixture.")
     st.subheader("Current Glyceride Mix")
-    mix_preview_df = build_mix_preview_dataframe(rows)
-    st.dataframe(mix_preview_df, use_container_width=True)
+    # Display rows in dataframe in the middle of the screen
+    df = rows_to_display_df(rows, st.session_state.get("display_unit", "Moles"))
+    st.dataframe(df, use_container_width=True)
 
     # Start first 3 columns with TAG mixture
     if st.button("Initialize with Mixture", key=f"{prefix}_initialize_mixture_button"):
@@ -719,11 +750,19 @@ def render_interesterification_tab():
                 "Only MAGs, DAGs, and TAGs use plucked/arranged settings."
             )
         else:
-            st.session_state[f"{prefix}_species"] = [unwrap_component(r.comp) for r in reactive_rows]
-            st.session_state[f"{prefix}_init_concentrations"] = [r.moles for r in reactive_rows]
-            st.session_state[f"{prefix}_species_names"] = [comp_display_name(r.comp) for r in reactive_rows]
+            st.session_state[f"{prefix}_species"] = [
+                unwrap_component(r.comp) for r in reactive_rows
+            ]
+            st.session_state[f"{prefix}_init_concentrations"] = [
+                r.moles for r in reactive_rows
+            ]
+            st.session_state[f"{prefix}_species_names"] = [
+                comp_display_name(r.comp) for r in reactive_rows
+            ]
             st.session_state[f"{prefix}_inert_rows"] = inert_rows
-            st.session_state[f"{prefix}_inert_species_names"] = [comp_display_name(r.comp) for r in inert_rows]
+            st.session_state[f"{prefix}_inert_species_names"] = [
+                comp_display_name(r.comp) for r in inert_rows
+            ]
             st.session_state[f"{prefix}_initialized"] = True
             st.session_state[f"{prefix}_reactions_initialized"] = False
             st.session_state[f"{prefix}_sim_initialized"] = False
@@ -776,8 +815,12 @@ def render_interesterification_tab():
 
         # Get ready button for rate constants
         if st.button("Add Reactions", key=f"{prefix}_add_reactions_button"):
-            plucked = [st.session_state[f"{prefix}_plucked_{i}"] for i in range(len(species))]
-            arranged = [st.session_state[f"{prefix}_arranged_{i}"] for i in range(len(species))]
+            plucked = [
+                st.session_state[f"{prefix}_plucked_{i}"] for i in range(len(species))
+            ]
+            arranged = [
+                st.session_state[f"{prefix}_arranged_{i}"] for i in range(len(species))
+            ]
 
             mixture_eqns, init_consts = Interesterifier.interesterification_rxn_list(
                 species,
@@ -827,7 +870,9 @@ def render_interesterification_tab():
                     unsafe_allow_html=True,
                 )
 
-        if st.button("Initialize Simulation", key=f"{prefix}_initialize_simulation_button"):
+        if st.button(
+            "Initialize Simulation", key=f"{prefix}_initialize_simulation_button"
+        ):
             ks = [st.session_state[f"{prefix}_k_{i}"] for i in range(len(mixture_eqns))]
             st.session_state[f"{prefix}_ks"] = ks
             st.session_state[f"{prefix}_sim_initialized"] = True
@@ -869,6 +914,7 @@ def render_interesterification_tab():
                 ks=ks,
                 arranged=arranged,
                 plucked=plucked,
+                units=st.session_state.get("display_unit", "Moles"),
             )
 
             t_eval = np.linspace(beginning, end, num=int(num_points))
@@ -880,7 +926,7 @@ def render_interesterification_tab():
             st.session_state[f"{prefix}_sim_ran"] = True
             try:
                 reactive_result_rows = [
-                    MixRow(comp, moles) for comp, moles in sim.glyceride_mix.mix.items()
+                    MixRow(comp, Moles) for comp, Moles in sim.glyceride_mix.mix.items()
                 ]
                 st.session_state[f"{prefix}_result_mix_object"] = sim.glyceride_mix
                 st.session_state[f"{prefix}_result_mix_rows"] = merge_mix_rows(
@@ -905,8 +951,9 @@ def render_esterification_tab():
 
     st.write(f"Loaded {len(rows)} species from the current mixture.")
     st.subheader("Current Glyceride Mix")
-    mix_preview_df = build_mix_preview_dataframe(rows)
-    st.dataframe(mix_preview_df, use_container_width=True)
+    # Display rows in dataframe in the middle of the screen
+    df = rows_to_display_df(rows, st.session_state.get("display_unit", "Moles"))
+    st.dataframe(df, use_container_width=True)
 
     fatty_acid_rows, detected_glycerol = split_esterification_rows(rows)
 
@@ -915,8 +962,12 @@ def render_esterification_tab():
             st.error("Esterification requires fatty acids in the current mixture.")
         else:
             st.session_state[f"{prefix}_species"] = [r.comp for r in fatty_acid_rows]
-            st.session_state[f"{prefix}_init_concentrations"] = [float(r.moles) for r in fatty_acid_rows]
-            st.session_state[f"{prefix}_species_names"] = [comp_display_name(r.comp) for r in fatty_acid_rows]
+            st.session_state[f"{prefix}_init_concentrations"] = [
+                float(r.moles) for r in fatty_acid_rows
+            ]
+            st.session_state[f"{prefix}_species_names"] = [
+                comp_display_name(r.comp) for r in fatty_acid_rows
+            ]
             st.session_state[f"{prefix}_glycerol_init"] = float(detected_glycerol)
             st.session_state[f"{prefix}_initialized"] = True
             st.session_state[f"{prefix}_reactions_initialized"] = False
@@ -930,7 +981,9 @@ def render_esterification_tab():
         names = st.session_state[f"{prefix}_species_names"]
 
         st.subheader("Feed Composition")
-        st.caption("The esterifier uses glycerol plus the fatty acids present in the current mixture.")
+        st.caption(
+            "The esterifier uses glycerol plus the fatty acids present in the current mixture."
+        )
 
         glycerol_initial = st.number_input(
             "Initial Glycerol Amount",
@@ -1013,7 +1066,9 @@ def render_esterification_tab():
                     unsafe_allow_html=True,
                 )
 
-        if st.button("Initialize Simulation", key=f"{prefix}_initialize_simulation_button"):
+        if st.button(
+            "Initialize Simulation", key=f"{prefix}_initialize_simulation_button"
+        ):
             ks = [st.session_state[f"{prefix}_k_{i}"] for i in range(len(mixture_eqns))]
             st.session_state[f"{prefix}_ks"] = ks
             st.session_state[f"{prefix}_sim_initialized"] = True
@@ -1051,6 +1106,7 @@ def render_esterification_tab():
                 list_of_fa=species,
                 initial_conc=[glycerol_initial, *fatty_acid_initial_conc],
                 ks=ks,
+                units=st.session_state.get("display_unit", "Moles"),
             )
 
             t_eval = np.linspace(beginning, end, num=int(num_points))
@@ -1063,7 +1119,7 @@ def render_esterification_tab():
             try:
                 st.session_state[f"{prefix}_result_mix_object"] = sim.glyceride_mix
                 st.session_state[f"{prefix}_result_mix_rows"] = [
-                    MixRow(comp, moles) for comp, moles in sim.glyceride_mix.mix.items()
+                    MixRow(comp, Moles) for comp, Moles in sim.glyceride_mix.mix.items()
                 ]
             except Exception as e:
                 st.warning(f"Could not construct resulting GlycerideMix: {str(e)}")

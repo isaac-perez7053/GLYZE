@@ -3,10 +3,13 @@ tester.ipynb
 scripts/tester.ipynb
 scripts/esterification_test.py
 src/__pycache__/
-src/glyze/glyceride_old.py
-src/glyze/glyceride_mix_old.py
 tests/
 build/
 .pytest_cache/
 oplsaa.ff/
 fchks/
+src/glyze/gromacs.py
+src/glyze/gromacs_topgen.py
+src/glyze/gaussian.py
+src/glyze/packmol.py
+src/glyze/e_viscosity_model.py

@@ -25,13 +25,18 @@ classifiers = [
 ]
 
 dependencies = [
-  "scipy==1.16.2",
-  "scikit-learn==1.7.2",
-  "matplotlib==3.10.6",
-  "ordered-set==4.1.0",
-  "MDAnalysis==2.10.0",
   "ase==3.26.0",
+  "matplotlib==3.10.8",
+  "mdanalysis==2.10.0",
+  "natsort==8.4.0",
+  "numpy==2.4.4",
+  "ordered_set==4.1.0",
+  "pandas==2.3.3",
+  "plotly==6.5.0",
   "rdkit==2025.9.1",
+  "scipy==1.17.1",
+  "streamlit==1.51.0",
+  "tabulate==0.9.0",
 ]
 
 [project.scripts]

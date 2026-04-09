@@ -4,6 +4,7 @@ from scipy import optimize
 import math
 import plotly.graph_objects as go
 
+
 class Deodorizer:
 
     @staticmethod
@@ -43,7 +44,7 @@ class Deodorizer:
             f_lo = f(eps)
         except (ValueError, ZeroDivisionError, OverflowError):
             # log of a tiny positive number may overflow; treat as +inf → bracketed
-            f_lo = float('inf')
+            f_lo = float("inf")
 
         f_hi = -S  # f(Va) = A*log(1) + (A-1)*0 - S = -S
 
@@ -68,8 +69,14 @@ class Deodorizer:
                 # Bracket still failed — fall back to near-zero (fully stripped)
                 return tol
 
-    def deodorizer(mix: GlycerideMix, S: float, T: float, P: float,
-                entrainment: float = 0.0, plot: bool = False) -> GlycerideMix:
+    def deodorizer(
+        mix: GlycerideMix,
+        S: float,
+        T: float,
+        P: float,
+        entrainment: float = 0.0,
+        plot: bool = False,
+    ) -> GlycerideMix:
         """
         Parameters
         ----------
@@ -84,11 +91,11 @@ class Deodorizer:
             A = P / (component.vapor_pressure(T))
             V0 = Deodorizer._solve_V0(Va, S, A)
             # Apply mechanical entrainment to whatever remains
-            V0 *= (1.0 - entrainment)
+            V0 *= 1.0 - entrainment
             result_pairs.append((component, V0))
 
         final_mix = GlycerideMix(result_pairs, units=mix.units, sort=True)
-        
+
         if plot:
             names, qi_vals, qf_vals = [], [], []
             for comp in mix.mix:
@@ -98,10 +105,12 @@ class Deodorizer:
                 qi_vals.append(mix.mix[comp])
                 qf_vals.append(final_mix.mix.get(comp, 0.0))
 
-            fig = go.Figure([
-                go.Bar(name="Initial", x=names, y=qi_vals),
-                go.Bar(name="Final",   x=names, y=qf_vals),
-            ])
+            fig = go.Figure(
+                [
+                    go.Bar(name="Initial", x=names, y=qi_vals),
+                    go.Bar(name="Final", x=names, y=qf_vals),
+                ]
+            )
             fig.update_layout(
                 barmode="group",
                 xaxis_title="Species",
@@ -122,7 +131,7 @@ class Deodorizer:
         tol=1e-6,
         nsteps=100,
         verbose=False,
-        plot=False
+        plot=False,
     ):
         sbounds = list(sbounds)
 
@@ -130,7 +139,8 @@ class Deodorizer:
             result_mix = Deodorizer.deodorizer(mix, S, T, P)
             total = sum(result_mix.quantities)
             fa_total = sum(
-                qty for comp, qty in result_mix.mix.items()
+                qty
+                for comp, qty in result_mix.mix.items()
                 if comp.component in mix.fa_list
             )
             return fa_total / total
@@ -167,7 +177,8 @@ class Deodorizer:
             print(f"Optimal steam factor S: {S_mid:.6f}")
             print(f"Steam % of oil: {2 * S_mid:.2f}%")
             fa_final = sum(
-                qty for comp, qty in final_mix.mix.items()
+                qty
+                for comp, qty in final_mix.mix.items()
                 if comp.component in mix.fa_list
             )
             print(f"\nFinal fatty acid fraction: {fa_final / final_total:.6f}")
@@ -191,10 +202,12 @@ class Deodorizer:
                 qi_vals.append(initial_x[comp])
                 qf_vals.append(final_mix.mix.get(comp, 0.0))
 
-            fig = go.Figure([
-                go.Bar(name="Initial", x=names, y=qi_vals),
-                go.Bar(name="Final",   x=names, y=qf_vals),
-            ])
+            fig = go.Figure(
+                [
+                    go.Bar(name="Initial", x=names, y=qi_vals),
+                    go.Bar(name="Final", x=names, y=qf_vals),
+                ]
+            )
             fig.update_layout(
                 barmode="group",
                 title=f"Deodorizer: Initial vs Final Mole Quantities (S={S_mid:.4f})",

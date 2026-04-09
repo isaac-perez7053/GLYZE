@@ -10,13 +10,13 @@ from glyze.glyceride_mix import GlycerideMix
 
 # Empirical coefficients (from MATLAB)
 COEFS: Dict[str, Tuple[float, float, float, float]] = {
-    "C2":  (0.07, 105.2911, 0.0112, -885.4359),
-    "C3":  (-4.056, 967.9563, 134.5872, 31.4778),
-    "C4":  (-0.384050317, 122.5512048, -6.489359596, -2543.72728),
-    "C6":  (-0.4725, 156.0213, -7.1172, -3537.5806),
-    "C7":  (0.0084, 127.5008, -6.3182, -2561.4509),
-    "C8":  (0.1859, 129.532, -6.0275, -2510.8992),
-    "C9":  (0.0493, 149.653, -6.5789, -3139.137),
+    "C2": (0.07, 105.2911, 0.0112, -885.4359),
+    "C3": (-4.056, 967.9563, 134.5872, 31.4778),
+    "C4": (-0.384050317, 122.5512048, -6.489359596, -2543.72728),
+    "C6": (-0.4725, 156.0213, -7.1172, -3537.5806),
+    "C7": (0.0084, 127.5008, -6.3182, -2561.4509),
+    "C8": (0.1859, 129.532, -6.0275, -2510.8992),
+    "C9": (0.0493, 149.653, -6.5789, -3139.137),
     "C10": (0.3359649655, 143.6640376, -6.245550956, -2870.995961),
     "C11": (-0.6474906112, 250.18623, -9.343606644, -7309.246012),
     "C12": (-0.7105139749, 273.087563, -9.038660766, -7891.211795),
@@ -59,7 +59,11 @@ def floats_from(s: str) -> np.ndarray:
     Convert a comma/space separated string into a float array.
     """
     vals = [x for x in re.split(r"[,\s]+", (s or "").strip()) if x]
-    return np.array([float(x) for x in vals], dtype=float) if vals else np.array([], dtype=float)
+    return (
+        np.array([float(x) for x in vals], dtype=float)
+        if vals
+        else np.array([], dtype=float)
+    )
 
 
 def range_for(tag: str) -> Tuple[float, float]:
@@ -136,7 +140,7 @@ class ViscosityCalculator:
             Viscosity in cP.
         """
         T = np.asarray(T, dtype=float)
-        return np.exp(A + B / (T + C) + E / (T ** 2))
+        return np.exp(A + B / (T + C) + E / (T**2))
 
     @staticmethod
     def mu_water(T: np.ndarray) -> np.ndarray:
@@ -228,7 +232,6 @@ class ViscosityCalculator:
             return sn is not None and len(sn) == 3 and all(fa is None for fa in sn)
         except Exception:
             return False
-
 
     @staticmethod
     def _is_glycerol_like(component: Any) -> bool:
@@ -386,12 +389,13 @@ class ViscosityCalculator:
 
         # Final sorted relative concentrations
         return sorted(
-            ((tag, value / total) for tag, value in result_dict.items()),
-            key=sort_key
+            ((tag, value / total) for tag, value in result_dict.items()), key=sort_key
         )
 
     @staticmethod
-    def validate_temperature_range(tags: Iterable[str], init_temp: float, final_temp: float):
+    def validate_temperature_range(
+        tags: Iterable[str], init_temp: float, final_temp: float
+    ):
         """
         Check whether the requested temperature window is valid for every tag.
         """
@@ -416,10 +420,7 @@ class ViscosityCalculator:
 
     @staticmethod
     def calculate(
-        mix: GlycerideMix,
-        init_temp: float,
-        final_temp: float,
-        step_size: float = 1.0
+        mix: GlycerideMix, init_temp: float, final_temp: float, step_size: float = 1.0
     ) -> Dict[str, Any]:
         """
         Compute pure-component and mixture viscosity curves from a GlycerideMix.
@@ -452,7 +453,9 @@ class ViscosityCalculator:
 
         # Compute mixture viscosity (log-mixing in mole-fraction space)
         x = mass_to_mole_frac(tags, mass_fracs)
-        T = np.arange(float(init_temp), float(final_temp) + 0.5 * step_size, float(step_size))
+        T = np.arange(
+            float(init_temp), float(final_temp) + 0.5 * step_size, float(step_size)
+        )
         U = np.vstack([ViscosityCalculator.pure_viscosity(tag, T) for tag in tags])
         u_mix = np.exp(x @ np.log(U))
 
@@ -467,8 +470,7 @@ class ViscosityCalculator:
 
     @staticmethod
     def make_plot(
-        result: Dict[str, Any],
-        title: str = "Viscosity vs Temperature"
+        result: Dict[str, Any], title: str = "Viscosity vs Temperature"
     ) -> go.Figure:
         """
         Build an interactive Plotly figure from calculate(...).
@@ -534,7 +536,7 @@ class ViscosityCalculator:
         init_temp: float,
         final_temp: float,
         step_size: float = 1.0,
-        title: str = "Viscosity vs Temperature"
+        title: str = "Viscosity vs Temperature",
     ) -> Tuple[Dict[str, Any], go.Figure]:
         """
         Convenience wrapper that computes the result and returns the Plotly figure.

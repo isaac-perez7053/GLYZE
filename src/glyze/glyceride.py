@@ -9,13 +9,13 @@ import numpy as np
 from functools import cached_property
 
 # Fragment values
-DELTA_H_MAG = 4.173E7
-DELTA_H_DAG = 3.486E7
-DELTA_H_TAG = -3.476E7
+DELTA_H_MAG = 4.173e7
+DELTA_H_DAG = 3.486e7
+DELTA_H_TAG = -3.476e7
 
-DELTA_G_MAG = -1.986E7
-DELTA_G_DAG = -4.687E7
-DELTA_G_TAG = -7.388E7
+DELTA_G_MAG = -1.986e7
+DELTA_G_DAG = -4.687e7
+DELTA_G_TAG = -7.388e7
 
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
@@ -261,7 +261,7 @@ class FattyAcid:
         # Ensure branches are also sorted
         branches = tuple(sorted((int(p), str(lbl)) for p, lbl in self.branches))
         return FattyAcid(self.length, positions, stereo, branches)
-    
+
     # def vapor_pressure(self, T: float) -> float:
     #     """
     #     Calculate the vapor pressure of the fatty acid at temperature T (K)
@@ -294,7 +294,7 @@ class FattyAcid:
     #         C = N * (1.4067 + (14.027 * 0.0000041)) + (gamma * f0)
     #         D = N * (-0.00167 + (14.027 * -0.00000126)) + (delta * f0)
     #         p_sum += np.exp(A + (B/np.sqrt(T**3)) - C*np.log(T) - D*T)
-        
+
     #     return p_sum
 
     def vapor_pressure(self, T_K: float) -> float:
@@ -306,14 +306,37 @@ class FattyAcid:
 
         # Group parameters: (A1k, B1k, C1k, D1k, A2k, B2k, C2k, D2k)
         GP = {
-            'CH3':      (-117.5,    7232.3, -22.7939,  0.0361,
-                        0.00338, -63.3963,  -0.00106,  0.000015),
-            'CH2':      (  8.4816, -10987.8,   1.4067, -0.00167,
-                        -0.00091,   6.7157,   0.000041, -0.00000126),
-            'COOH':     (  8.0734, -20478.3,   0.0359, -0.00207,
-                        0.00399, -63.9929,  -0.00132,  0.00001),
-            'CH=CH_cis':(  2.4317,   1410.3,   0.7868, -0.004,
-                        0,         0,         0,        0),
+            "CH3": (
+                -117.5,
+                7232.3,
+                -22.7939,
+                0.0361,
+                0.00338,
+                -63.3963,
+                -0.00106,
+                0.000015,
+            ),
+            "CH2": (
+                8.4816,
+                -10987.8,
+                1.4067,
+                -0.00167,
+                -0.00091,
+                6.7157,
+                0.000041,
+                -0.00000126,
+            ),
+            "COOH": (
+                8.0734,
+                -20478.3,
+                0.0359,
+                -0.00207,
+                0.00399,
+                -63.9929,
+                -0.00132,
+                0.00001,
+            ),
+            "CH=CH_cis": (2.4317, 1410.3, 0.7868, -0.004, 0, 0, 0, 0),
         }
 
         # Molecular weight: CnH(2n)O2 minus 2H per double bond
@@ -322,9 +345,9 @@ class FattyAcid:
 
         # Group counts
         n_CH2 = n - 2 - 2 * n_db
-        groups = [('CH3', 1), ('CH2', n_CH2), ('COOH', 1)]
+        groups = [("CH3", 1), ("CH2", n_CH2), ("COOH", 1)]
         if n_db > 0:
-            groups.append(('CH=CH_cis', n_db))
+            groups.append(("CH=CH_cis", n_db))
 
         # Compound-specific parameters for fatty acids
         f0, f1, s0, s1 = 0.001, 0.0, 0.0, 0.0
@@ -350,9 +373,7 @@ class FattyAcid:
         Dp += -0.00517 * corr
 
         # Eq. A.16
-        return np.exp(Ap + Bp / (T_K ** 1.5) - Cp * np.log(T_K) - Dp * T_K)
-
-
+        return np.exp(Ap + Bp / (T_K**1.5) - Cp * np.log(T_K) - Dp * T_K)
 
     def _build_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
         """
@@ -439,7 +460,9 @@ class FattyAcid:
         return self._build_rdkit_mol(optimize=True)
 
     def to_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
-        return Chem.Mol(self._cached_optimized_rdkit_mol if optimize else self._cached_rdkit_mol)
+        return Chem.Mol(
+            self._cached_optimized_rdkit_mol if optimize else self._cached_rdkit_mol
+        )
 
     @cached_property
     def molar_mass(self) -> float:
@@ -456,7 +479,7 @@ class FattyAcid:
     def num_carbons(self) -> int:
         """Return the number of carbons in the fatty acid"""
         return self.length
-    
+
     @property
     def name(self) -> str:
         """
@@ -485,7 +508,7 @@ class FattyAcid:
 
 class Glyceride:
     """
-    Description of a glyceride 
+    Description of a glyceride
 
     Attributes:
     -----------
@@ -494,7 +517,7 @@ class Glyceride:
 
     Class Methods:
     --------------
-    from_name: Create a Glyceride usign the naming scheme    
+    from_name: Create a Glyceride usign the naming scheme
 
     Methods:
     --------
@@ -544,8 +567,12 @@ class Glyceride:
         """
 
         # Make sure the input string has the right format (roughly)
-        if not name.startswith("G_"):
+        if not name.startswith("G_") and not name.startswith("Glycerol"):
             raise ValueError(f"Invalid glyceride format: {name}")
+
+        # Edge case: Glycerol (no fatty acids)
+        if name == "Glycerol":
+            return cls((None, None, None))
 
         # Split up the string into its fatty acids.
         parts = name[2:].split("_")
@@ -799,18 +826,30 @@ class Glyceride:
         """
         # Group parameters: (A1k, B1k, C1k, D1k, A2k, B2k, C2k, D2k)
         GP = {
-            'CH3':       (-117.5,    7232.3, -22.7939,  0.0361,
-                        0.00338, -63.3963,  -0.00106,  0.000015),
-            'CH2':       (  8.4816,-10987.8,   1.4067, -0.00167,
-                        -0.00091,   6.7157,  0.000041, -0.00000126),
-            'CH=CH_cis': (  2.4317,  1410.3,   0.7868, -0.004,
-                            0,         0,        0,        0),
-            'COO':       (  1.843,    526.5,   0.6584, -0.00368,
-                            0,         0,        0,        0),
-            'OH':        ( 28.4723,-16694,     3.257,    0,
-                            0.00485,   0,        0,        0),
-            'glycerol':  (688.3,   -349293,  122.5,    -0.1814,
-                        -0.00145,   0,        0,        0),
+            "CH3": (
+                -117.5,
+                7232.3,
+                -22.7939,
+                0.0361,
+                0.00338,
+                -63.3963,
+                -0.00106,
+                0.000015,
+            ),
+            "CH2": (
+                8.4816,
+                -10987.8,
+                1.4067,
+                -0.00167,
+                -0.00091,
+                6.7157,
+                0.000041,
+                -0.00000126,
+            ),
+            "CH=CH_cis": (2.4317, 1410.3, 0.7868, -0.004, 0, 0, 0, 0),
+            "COO": (1.843, 526.5, 0.6584, -0.00368, 0, 0, 0, 0),
+            "OH": (28.4723, -16694, 3.257, 0, 0.00485, 0, 0, 0),
+            "glycerol": (688.3, -349293, 122.5, -0.1814, -0.00145, 0, 0, 0),
         }
 
         fa = [x for x in self.sn if x is not None]
@@ -841,18 +880,18 @@ class Glyceride:
             total_db += n_db
 
         groups = [
-            ('glycerol', 1),
-            ('CH3', total_CH3),
-            ('CH2', total_CH2),
-            ('COO', n_fa),
+            ("glycerol", 1),
+            ("CH3", total_CH3),
+            ("CH2", total_CH2),
+            ("COO", n_fa),
         ]
         if total_db > 0:
-            groups.append(('CH=CH_cis', total_db))
+            groups.append(("CH=CH_cis", total_db))
 
         # Free hydroxyl groups on un-esterified glycerol positions
         n_free_oh = 3 - n_fa
         if n_free_oh > 0:
-            groups.append(('OH', n_free_oh))
+            groups.append(("OH", n_free_oh))
 
         # Compound-specific parameters for acylglycerols
         f0, f1, s0, s1 = 0.0, 0.0, 0.0, 0.0
@@ -874,7 +913,7 @@ class Glyceride:
         Dp += -0.00517 * corr
 
         # Eq. A.16
-        return np.exp(Ap + Bp / (T_K ** 1.5) - Cp * np.log(T_K) - Dp * T_K)
+        return np.exp(Ap + Bp / (T_K**1.5) - Cp * np.log(T_K) - Dp * T_K)
 
     # # find vapor pressure based on temperature
     # def vapor_pressure(self, T) -> float:
@@ -1028,24 +1067,14 @@ class Glyceride:
             return DELTA_H_MAG + fa[0].num_carbons * 2093479.64 + 31397826.69
         # dag
         elif len(fa) == 2:
-            return (DELTA_H_DAG + sum(fa_i.num_carbons * 2093479.64 + 31397826.69 for fa_i in fa))
+            return DELTA_H_DAG + sum(
+                fa_i.num_carbons * 2093479.64 + 31397826.69 for fa_i in fa
+            )
         # tag
         else:
-            return (DELTA_H_TAG + sum(fa_i.num_carbons * 2093479.64 + 31397826.69 for fa_i in fa))
-
-    # gibbs free energy of vaporization for mags, dags, tags
-    # @property
-    # def gibbs_of_vaporitzation(self) -> float:
-    #     fa = [x for x in self.sn if x]
-    #     # mag
-    #     if len(fa) == 1:
-    #         return DELTA_G_MAG + fa[0].num_carbons * 1.66 + 22
-    #     # dag
-    #     elif len(fa) == 2:
-    #         return (DELTA_G_DAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
-    #     # tag
-    #     else:
-    #         return (DELTA_G_TAG + sum(fa_i.num_carbons * 1.66 + 22 for fa_i in fa))
+            return DELTA_H_TAG + sum(
+                fa_i.num_carbons * 2093479.64 + 31397826.69 for fa_i in fa
+            )
 
     @property
     def chain_lengths(self) -> Tuple[int, int, int]:
@@ -1072,6 +1101,9 @@ class Glyceride:
             for bpos, _ in fa.branches:
                 parts.append(f"M{bpos:02d}")  # Only 'Me' supported now
             return "".join(parts)
+
+        if all(fa is None for fa in self.sn):
+            return "Glycerol"
 
         return "G_" + "_".join(fa_name(fa) for fa in self.sn)
 

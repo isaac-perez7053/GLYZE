@@ -418,19 +418,11 @@ st.markdown(HERO_HTML, unsafe_allow_html=True)
 
 # Card wrapper
 st.markdown('<div class="glyze-card">', unsafe_allow_html=True)
-st.markdown(
-    '<div class="start-title">Glyceride Mix Builder</div>', unsafe_allow_html=True
-)
-st.markdown(
-    '<div class="start-subtitle">Add species on the left, edit the mixture in the center, export on the right.</div>',
-    unsafe_allow_html=True,
-)
-
 
 MM_H2O = 18.01528
 MM_GLYCEROL = 92.09382
-DISPLAY_UNITS = ["mole", "gram", "mass_fraction"]
-ADD_UNITS = ["mole", "gram"]
+DISPLAY_UNITS = ["Moles", "Grams", "Mass Fractions"]
+ADD_UNITS = ["Moles", "Grams"]
 
 
 @lru_cache(maxsize=512)
@@ -553,9 +545,9 @@ def add_to_mix(comp: Any, qty: float, qty_unit: str) -> None:
     if qty <= 0:
         raise ValueError("Quantity must be > 0")
 
-    if qty_unit == "mole":
+    if qty_unit == "Moles":
         moles = qty
-    elif qty_unit == "gram":
+    elif qty_unit == "Grams":
         moles = qty / molar_mass_of(comp)
     else:
         raise ValueError(f"Unsupported add unit: {qty_unit}")
@@ -582,11 +574,11 @@ def rows_to_display_df_cached(
     moles = [moles for _, moles, _ in sig]
     molar_masses = [mm for _, _, mm in sig]
 
-    if display_unit == "mole":
+    if display_unit == "Moles":
         qty = moles
-    elif display_unit == "gram":
+    elif display_unit == "Grams":
         qty = [m * mm for m, mm in zip(moles, molar_masses)]
-    elif display_unit == "mass_fraction":
+    elif display_unit == "Mass Fractions":
         masses = [m * mm for m, mm in zip(moles, molar_masses)]
         total = sum(masses) or 1.0
         qty = [m / total for m in masses]
@@ -616,11 +608,11 @@ def apply_table_edits_to_rows(
             continue
 
         # Choose to display which units
-        if display_unit == "mole":
+        if display_unit == "Moles":
             moles = q
-        elif display_unit == "gram":
+        elif display_unit == "Grams":
             moles = q / molar_mass_of(comp) if q > 0 else 0.0
-        elif display_unit == "mass_fraction":
+        elif display_unit == "Mass Fractions":
             # Interpret as fractions on a 1 g basis; renormalize after
             moles = (q * 1.0) / molar_mass_of(comp) if q > 0 else 0.0
         else:
@@ -628,7 +620,7 @@ def apply_table_edits_to_rows(
 
         new_rows.append(MixRow(comp, moles))
 
-    if display_unit == "mass_fraction" and new_rows:
+    if display_unit == "Mass Fractions" and new_rows:
         fracs = edited_df["Quantity"].astype(float).tolist()
         s = sum(fracs)
         if s > 0:
@@ -692,11 +684,22 @@ def import_mix_from_uploaded_csv(uploaded_file) -> List[MixRow]:
 
 def build_mix_object(rows: List[MixRow]) -> GlycerideMix:
     mix_dict = {r.comp: r.moles for r in rows}
-    return GlycerideMix(mix_dict, units="mole", sort=True)
+    return GlycerideMix(mix_dict, units="Moles", sort=True)
 
 
-display_unit = st.session_state.setdefault("display_unit", "mole")
-export_unit = st.session_state.setdefault("export_unit", "mole")
+def update_glyze_mixture():
+    rows = get_mix_rows()
+    try:
+        mix_obj = build_mix_object(rows)
+        st.session_state["glyze_mix_object"] = mix_obj
+        st.session_state["glyze_mix_rows"] = rows
+        st.session_state["glyze_mix_initialized"] = True
+    except Exception as e:
+        st.error(str(e))
+
+
+display_unit = st.session_state.setdefault("display_unit", "Moles")
+export_unit = st.session_state.setdefault("export_unit", "Moles")
 
 left, mid, right = st.columns([1.2, 1.9, 1.2], gap="large")
 
@@ -704,11 +707,194 @@ left, mid, right = st.columns([1.2, 1.9, 1.2], gap="large")
 with left:
     st.subheader("Add species")
 
+    # Dictionary containing common name and GLYZE name
+    built_fas = {
+        "None": None,
+        "Propionic acid": "N03D00",
+        "Butyric acid": "N04D00",
+        "Valeric acid": "N05D00",
+        "Caproic acid": "N06D00",
+        "Heptanoic acid": "N07D00",
+        "Caprylic acid": "N08D00",
+        "Nonanoic acid": "N09D00",
+        "Capric acid": "N10D00",
+        "Undecaonic acid": "N11D00",
+        "Lauric acid": "N12D00",
+        "Tridecanoic acid": "N13D00",
+        "Myristic acid": "N14D00",
+        "Pentadecanoic acid": "N15D00",
+        "Palmitic acid": "N16D00",
+        "Heptadecanoic acid": "N17D00",
+        "Stearic acid": "N18D00",
+        "Oleic acid": "N18D01P09Z",
+        "Arachidic acid": "N20D00",
+    }
+
+    # Build preset fatty acids
+    with st.expander("Built-in fatty acids", expanded=False):
+
+        # Create a dropdown menu using the keys of the dictionary
+        fa_name = st.selectbox(
+            "Select a fatty acid to add",
+            options=list(built_fas.keys()),
+            key="built_fa_select",
+            placeholder="None",
+        )
+
+        qty = st.number_input(
+            "Quanitity",
+            min_value=0.0,
+            value=1.0,
+            step=0.1,
+            key="built_fa_qty_builtinfa",
+        )
+
+        # Units
+        qty_unit = st.selectbox(
+            "Quantity units", ADD_UNITS, key="built_fa_qty_unit_builtinfa"
+        )
+
+        # Add Button
+        quick_add = st.button(
+            "Add selected fatty acid", use_container_width=True, key="built_fa_add"
+        )
+
+        if quick_add:
+            try:
+                comp = parse_component_from_string(built_fas[fa_name])
+                add_to_mix(comp, qty, qty_unit)
+                st.success(f"Added {fa_name} ({qty:g} {qty_unit}).")
+            except Exception as e:
+                st.error(str(e))
+
+    # Build preset glycerides
+    with st.expander("Built-in glycerides", expanded=False):
+
+        # First allow option to pick from preset Pure Triglycerides
+        built_pure_tags = {
+            "None": None,
+            "Tributrin": "G_N04D00_N04D00_N04D00",
+            "Tricaproin": "G_N06D00_N06D00_N06D00",
+            "Tricaprylin": "G_N08D00_N08D00_N08D00",
+            "Tricaprin": "G_N10D00_N10D00_N10D00",
+            "Trilaurin": "G_N12D00_N12D00_N12D00",
+            "Trimyristin": "G_N14D00_N14D00_N14D00",
+            "Tripalmitin": "G_N16D00_N16D00_N16D00",
+            "Tristearin": "G_N18D00_N18D00_N18D00",
+            "Triolein": "G_N18D01P09Z_N18D01P09Z_N18D01P09Z",
+        }
+        tag_name = st.selectbox(
+            "Select pure triglyeceride to add",
+            options=list(built_pure_tags.keys()),
+            key="built_pure_select",
+            placeholder="None",
+        )
+
+        # Line to demarcate the two options
+        st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
+
+        # Give option to make glyceride from preset fatty acid
+        fa1_name = st.selectbox(
+            "FA 1 (sn-1)",
+            options=list(built_fas.keys()),
+            key="built_g_fa1",
+            placeholder="None",
+        )
+        fa2_name = st.selectbox(
+            "FA 2 (sn-2)",
+            options=list(built_fas.keys()),
+            key="built_g_fa2",
+            placeholder="None",
+        )
+        fa3_name = st.selectbox(
+            "FA 3 (sn-3)",
+            options=list(built_fas.keys()),
+            key="built_g_fa3",
+            placeholder="None",
+        )
+
+        # Input qty for the glyceride to be added
+        qty = st.number_input(
+            "Quanitity",
+            min_value=0.0,
+            value=1.0,
+            step=0.1,
+            key="built_fa_qty_builtintg",
+        )
+
+        # Units
+        qty_unit = st.selectbox(
+            "Quantity units", ADD_UNITS, key="built_fa_qty_unit_builtintg"
+        )
+
+        quick_add = st.button(
+            "Add selected glyceride", use_container_width=True, key="built_g_add"
+        )
+
+        if quick_add:
+            try:
+                # Ensure that only one of the options is selected
+                if (
+                    built_fas.get(fa1_name)
+                    and built_fas.get(fa2_name)
+                    and built_fas.get(fa3_name)
+                    and built_pure_tags.get(tag_name)
+                ):
+                    st.error("Please select only one of the above options")
+
+                # Option for biulding triglyceride form 3 preset fatty acids
+                elif (
+                    built_fas.get(fa1_name)
+                    and built_fas.get(fa2_name)
+                    and built_fas.get(fa3_name)
+                ):
+                    comp = parse_component_from_string(
+                        f"G_{built_fas[fa1_name]}_{built_fas[fa2_name]}_{built_fas[fa3_name]}"
+                    )
+
+                # OPtion for selecting a preset pure trigyceride by name
+                elif tag_name:
+                    comp = parse_component_from_string(built_pure_tags[tag_name])
+                else:
+                    st.error("Please select an option to add a glyceride")
+
+                add_to_mix(comp, qty, qty_unit)
+                st.success(f"Added {comp_display_name(comp)} ({qty:g} {qty_unit}).")
+            except Exception as e:
+                st.error(str(e))
+
+    # This section is meant for adding either water or glycerol
+    with st.expander("Quick add extra species", expanded=False):
+        #
+        extra_species = ["H2O", "Glycerol"]
+        extra_name = st.selectbox(
+            "Select a species to add", options=extra_species, key="extra_species_select"
+        )
+        qty = st.number_input(
+            "Quanitity", min_value=0.0, value=1.0, step=0.1, key="extra_species_qty"
+        )
+        qty_unit = st.selectbox(
+            "Quantity units", ADD_UNITS, key="extra_species_qty_unit"
+        )
+        quick_add = st.button(
+            "Add selected species", use_container_width=True, key="extra_species_add"
+        )
+
+        if quick_add:
+            try:
+                comp = parse_component_from_string(extra_name)
+                add_to_mix(comp, qty, qty_unit)
+                st.success(f"Added {extra_name} ({qty:g} {qty_unit}).")
+            except Exception as e:
+                st.error(str(e))
+
     # Quick add by name
-    with st.expander("Quick add by name", expanded=True):
+    with st.expander("Quick add by name", expanded=False):
         with st.form("quick_add_form", clear_on_submit=False):
             # How to use instructions
-            st.write("Examples: `N18D1P09Z`, `G_N18D1P09Z_N16D0_N16D0`, `H2O`, `Glycerol`")
+            st.write(
+                "Examples: `N18D01P09Z`, `G_N18D1P09Z_N16D00_N16D00`, `H2O`, `Glycerol`"
+            )
 
             # Text input for name
             name_str = st.text_input("Component name", key="quick_name")
@@ -719,14 +905,10 @@ with left:
             )
 
             # Units
-            qty_unit = st.selectbox(
-                "Quantity units", ADD_UNITS, key="quick_qty_unit"
-            )
+            qty_unit = st.selectbox("Quantity units", ADD_UNITS, key="quick_qty_unit")
 
             # Add button
-            quick_add = st.form_submit_button(
-                "Add", use_container_width=True
-            )
+            quick_add = st.form_submit_button("Add", use_container_width=True)
 
         if quick_add:
             try:
@@ -735,106 +917,6 @@ with left:
                 st.success(f"Added {name_str} ({qty:g} {qty_unit}).")
             except Exception as e:
                 st.error(str(e))
-
-    # Build fatty acids from individual inputs
-    with st.expander("Build fatty acid by fields"):
-        with st.form("fatty_acid_form", clear_on_submit=False):
-            # Carbons and db_count
-            carbons = st.number_input(
-                "Carbons (CC)", min_value=2, max_value=40, value=18, step=1, key="fa_cc"
-            )
-            db_count = st.number_input(
-                "Double bonds (DD)", min_value=0, max_value=8, value=1, step=1, key="fa_dd"
-            )
-
-            # Double bond positions input
-            st.caption("Double-bond positions + stereo (Z/E) — one per double bond.")
-            db_pos_str = st.text_input(
-                "DB positions (comma-separated)",
-                value="9" if db_count else "",
-                key="fa_dbpos",
-            )
-            db_st_str = st.text_input(
-                "DB stereo (comma-separated, Z/E)",
-                value="Z" if db_count else "",
-                key="fa_dbst",
-            )
-
-            # Optional branches input
-            st.caption("Optional branches")
-            methyl_str = st.text_input(
-                "Methyl positions (comma-separated)", value="", key="fa_methyl"
-            )
-            hydroxyl_str = st.text_input(
-                "Hydroxyl positions (comma-separated)", value="", key="fa_oh"
-            )
-
-            fa_qty = st.number_input(
-                "Quantity", min_value=0.0, value=1.0, step=0.1, key="fa_qty"
-            )
-            fa_qty_unit = st.selectbox(
-                "Quantity units", ADD_UNITS, key="fa_qty_unit"
-            )
-
-            # Build and add the fatty acid to an internal list
-            add_fa = st.form_submit_button(
-                "Build + Add Fatty Acid", use_container_width=True
-            )
-
-        if add_fa:
-            try:
-                db_positions = parse_int_list(db_pos_str)
-                db_stereo = parse_stereo_list(db_st_str)
-                methyl_positions = parse_int_list(methyl_str)
-                hydroxyl_positions = parse_int_list(hydroxyl_str)
-
-                # Format the fa name
-                fa_name = format_fa_name(
-                    carbons=carbons,
-                    db_count=db_count,
-                    db_positions=db_positions,
-                    db_stereo=db_stereo,
-                    methyl_positions=methyl_positions,
-                    hydroxyl_positions=hydroxyl_positions,
-                )
-                # Grab the fa from name and add to mix
-                fa_obj = FattyAcid.from_name(fa_name)
-                add_to_mix(fa_obj, fa_qty, fa_qty_unit)
-                st.success(f"Added {fa_name} ({fa_qty:g} {fa_qty_unit}).")
-            except Exception as e:
-                st.error(str(e))
-
-    # Build glycerides using fatty acids
-    with st.expander("Build glyceride from 3 fatty-acid names"):
-        with st.form("glyceride_form", clear_on_submit=False):
-            st.write("Enter three FA names, then create `G_fa1_fa2_fa3`.")
-            fa1 = st.text_input("FA 1", value="N18D1P09Z", key="g_fa1")
-            fa2 = st.text_input("FA 2", value="N16D00", key="g_fa2")
-            fa3 = st.text_input("FA 3", value="N16D00", key="g_fa3")
-
-            g_qty = st.number_input(
-                "Quantity", min_value=0.0, value=1.0, step=0.1, key="g_qty"
-            )
-            g_qty_unit = st.selectbox("Quantity units", ADD_UNITS, key="g_qty_unit")
-
-            # Add the objects to the mixture
-            add_glyceride = st.form_submit_button(
-                "🧈 Build + Add Glyceride", use_container_width=True
-            )
-
-        if add_glyceride:
-            try:
-                _ = FattyAcid.from_name(fa1.strip())
-                _ = FattyAcid.from_name(fa2.strip())
-                _ = FattyAcid.from_name(fa3.strip())
-
-                g_name = f"G_{fa1.strip()}_{fa2.strip()}_{fa3.strip()}"
-                g_obj = Glyceride.from_name(g_name)
-                add_to_mix(g_obj, g_qty, g_qty_unit)
-                st.success(f"Added {g_name} ({g_qty:g} {g_qty_unit}).")
-            except Exception as e:
-                st.error(str(e))
-
 
 with mid:
     # Controls the list in the middle of the screen
@@ -850,16 +932,16 @@ with mid:
             "Display/edit units",
             DISPLAY_UNITS,
             index=DISPLAY_UNITS.index(display_unit),
-            key="display_unit_select",
+            key="display_unit",
         )
+
     # In row 2, have clear mix button
     with c2:
         if st.button("Clear mix", use_container_width=True):
             set_mix_rows([])
             st.rerun()
 
-    st.session_state["display_unit"] = new_display_unit
-    display_unit = new_display_unit
+    display_unit = st.session_state["display_unit"]
 
     # Display rows in dataframe in the middle of the screen
     df = rows_to_display_df(rows, display_unit)
@@ -882,6 +964,9 @@ with mid:
         apply_edits = st.form_submit_button(
             "Apply table edits", use_container_width=True
         )
+
+        # Update glyze mixture globally
+        update_glyze_mixture()
 
     if apply_edits:
         try:
@@ -949,21 +1034,7 @@ with right:
     st.subheader("Build object")
 
     if st.button(
-        "Build GlycerideMix", use_container_width=True, disabled=(len(rows) == 0)
-    ):
-        try:
-            mix_obj = build_mix_object(rows)
-            st.session_state["glyze_mix_object"] = mix_obj
-            st.session_state["glyze_mix_rows"] = rows
-            st.session_state["processor_mix_rows"] = rows
-            st.session_state["glyze_mix_initialized"] = True
-            st.success(f"Built: {mix_obj.name}")
-            st.code(repr(mix_obj))
-        except Exception as e:
-            st.error(str(e))
-
-    if st.button(
-        "Initialize Chem Processor", use_container_width=True, disabled=(len(rows) == 0)
+        "Update Chem Processor", use_container_width=True, disabled=(len(rows) == 0)
     ):
         try:
             mix_obj = build_mix_object(rows)

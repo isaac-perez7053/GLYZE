@@ -171,11 +171,21 @@ def glycerol_vapor_pressure(T_K: float) -> float:
     p_mmHg = 10 ** (A - B / (T_C + C))
     return p_mmHg * 133.322  # mmHg -> Pa
 
+
 class MixtureComponent:
     """"""
 
     def __init__(self, component):
         self.component = component
+
+    @classmethod
+    def from_name(cls, name: str):
+        if name.startswith("G_"):
+            return cls(Glyceride.from_name(name))
+        elif name.startswith("N"):
+            return cls(FattyAcid.from_name(name))
+        else:
+            return cls(name)
 
     @classmethod
     def from_string(cls, string: str):
@@ -184,19 +194,26 @@ class MixtureComponent:
             return cls(Glyceride.from_name(string))
         elif string.startswith("N"):
             return cls(FattyAcid.from_name(string))
-        elif string == "H2O" or string == "Glycerol":
+        elif string == "H2O":
             return cls(string)
         else:
             raise TypeError(
-                f"Please enter a valid component name (e.g., G_XXX, NXXX, H2O, Glycerol)"
+                f"Please enter a valid component name (e.g., G_XXX, NXXX, H2O)"
             )
 
     def vapor_pressure(self, T: float):
+        if isinstance(self.component, Glyceride) and self.component.name == "Glycerol":
+            return glycerol_vapor_pressure(T)
         vp = getattr(self.component, "vapor_pressure", None)
         if vp is None:
-            if self.component == "H2O": 
+            if self.component == "H2O":
                 return water_vapor_pressure(T)
-            return glycerol_vapor_pressure(T)
+            elif self.component == "Glycerol":
+                return glycerol_vapor_pressure(T)
+            else:
+                raise ValueError(
+                    f"Component {self.component} does not have a vapor pressure method."
+                )
         return vp(T) if callable(vp) else vp
 
     @property
@@ -205,30 +222,31 @@ class MixtureComponent:
             return self.component.name
         return str(self.component)
 
-    @property 
+    @property
     def molar_mass(self):
-        if hasattr(self.component, 'molar_mass'):
+        if hasattr(self.component, "molar_mass"):
             return self.component.molar_mass
         elif self.component == "H2O":
             return 18.01528
-        elif self.component == "Glycerol":
-            return 92.09
         else:
             raise ValueError(f"Unknown molar mass for component: {self.component}")
-        
-    @property 
+
+    @property
     def length(self):
-        if hasattr(self.component, 'chain_legnths'):
+        if hasattr(self.component, "chain_legnths"):
             # Return a list like [9, 9, 8] to [(9, 2), (8, 1)]
             return list(Counter(self.component.chain_lengths).items())
-        elif hasattr(self.component, 'num_carbons'):
+        elif hasattr(self.component, "num_carbons"):
             return [(self.component.num_carbons, 1)]
         else:
             # Return null list if water or glycerol
             return []
 
+
 class GlycerideMix:
-    def __init__(self, mix, units: str = "mole", *, sort: bool = True, zero_tol: float = 1e-12):
+    def __init__(
+        self, mix, units: str = "Moles", *, sort: bool = True, zero_tol: float = 1e-12
+    ):
         self.units = units
         self.zero_tol = float(zero_tol)
 
@@ -237,7 +255,10 @@ class GlycerideMix:
 
         # Ensure every component is wrapped in MixtureComponent
         pairs = [
-            (comp if isinstance(comp, MixtureComponent) else MixtureComponent(comp), qty)
+            (
+                comp if isinstance(comp, MixtureComponent) else MixtureComponent(comp),
+                qty,
+            )
             for comp, qty in pairs
         ]
 
@@ -312,8 +333,8 @@ class GlycerideMix:
             reader = csv.DictReader(f)
             for row in reader:
                 values = list(row.values())
-                name  = values[0].strip()
-                qty   = float(values[1])
+                name = values[0].strip()
+                qty = float(values[1])
                 units = values[2].strip()
                 mix.append((MixtureComponent.from_string(name), qty))
 
@@ -756,16 +777,13 @@ class GlycerideMix:
         List of species masses using units
         """
         masses = []
-        if self.units == "mole":
-            masses = [
-                92.08 if g == "Glycerol" else g.molar_mass * qty
-                for g, qty in self.mix.items()
-            ]
+        if self.units == "Moles":
+            masses = [g.molar_mass * qty for g, qty in self.mix.items()]
 
-        if self.units == "gram":
+        if self.units == "Grams":
             masses = [qty for g, qty in self.mix.items()]
 
-        if self.units == "mass_fraction":
+        if self.units == "Mass Fractions":
             masses = [qty * self.total_mass for g, qty in self.mix.items()]
 
         return masses
@@ -776,16 +794,13 @@ class GlycerideMix:
         Calculate total species mass using units
         """
 
-        if self.units == "mole":
-            total = sum(
-                92.08 if g == "Glycerol" else g.molar_mass * qty
-                for g, qty in self.mix.items()
-            )
+        if self.units == "Moles":
+            total = sum(g.molar_mass * qty for g, qty in self.mix.items())
 
-        if self.units == "gram":
+        if self.units == "Grams":
             total = sum(qty for _, qty in self.mix.items())
 
-        if self.units == "mass_fraction":
+        if self.units == "Mass Fractions":
             total = 1.0
 
         return total
@@ -797,7 +812,7 @@ class GlycerideMix:
     def __str__(self):
         import tabulate
 
-        table = [[glyceride, qty] for glyceride, qty in self.mix.items()]
+        table = [[glyceride.name, qty] for glyceride, qty in self.mix.items()]
         return tabulate.tabulate(
             table, headers=["Glyceride", f"Quantity ({self.units})"]
         )
