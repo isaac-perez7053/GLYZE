@@ -8,7 +8,7 @@ from collections import defaultdict
 from glyze.glyceride_mix import GlycerideMix
 
 
-# Empirical coefficients (from MATLAB)
+# Empirical fragment coefficients (from MATLAB)
 COEFS: Dict[str, Tuple[float, float, float, float]] = {
     "C2": (0.07, 105.2911, 0.0112, -885.4359),
     "C3": (-4.056, 967.9563, 134.5872, 31.4778),
@@ -115,23 +115,88 @@ def mass_to_mole_frac(tags: Iterable[str], mass_fracs: Iterable[float]) -> np.nd
 
 class ViscosityCalculator:
     """
-    Utilities for estimating viscosity curves for a GlycerideMix.
+    Emperical viscosity calculator for glyceride mixtures based on a log-mixing rule of pure components.
 
     The current model maps the mixture onto an effective distribution of TAG
     families Cn and now also allows WATER and GLYCEROL as explicit weighted
-    components in the final mixing rule.
+    components in the final mixing rule. This relationship could be improved in future models
+    to better capture the effects of mixing oils with water/glycerol accounting for non-idealities.
+
+
+    Attributes:
+    -----------
+    None (all attributes are passed as parameters or are local variables within methods)
+
+    Class Methods:
+    --------------
+    None (all methods are static)
+
+    Methods:
+    --------
+    mu_water (static method) :
+        Computes pure water viscosity in cP from temperature in C.
+
+    mu_glycerol (static method)
+        Computes pure glycerol viscosity in cP from temperature in C.
+
+    pure_viscosity (static method) :
+        dispatches to the appropriate pure viscosity function based on tag.
+
+    _normalize_tag (static method) :
+        Converts an integer carbon length to a supported tag string.
+
+    _unwrap_component (static method) :
+        If the object is a MixtureComponent-like wrapper, returns the underlying component.
+
+    _component_name (static method) :
+        Best-effort component name extraction.
+
+    _is_water_like (static method) :
+        Tries to detect water entries based on name.
+
+    _is_empty_glyceride (static method) :
+        Treats a glyceride with no attached fatty acids as glycerol.
+    
+    _is_glycerol_like (static method) :
+        Tries to detect glycerol entries based on name and structure.
+    
+    _fatty_acid_lengths_from_component (static method) :
+        Extracts fatty-acid lengths from a component in a tolerant way.
+    
+    parse_input_mix (static method) :
+        Converts a GlycerideMix into an effective component distribution for viscosity calculation.
+    
+    validate_temperature_range (static method) :
+        Checks whether the requested temperature window is valid for every tag.
+    
+    calculate (static method) :
+        Computes pure-component and mixture viscosity curves from a GlycerideMix.
+    
+    make_plot (static method) :
+        Builds an interactive Plotly figure from the result of calculate(...).
+    
+    calculate_and_plot (static method) :
+        Convenience wrapper that computes the result and returns the Plotly figure.
+    
+    to_csv_string (static method) :
+        Converts a result dictionary into a CSV string for download/use in Streamlit.
+
+    Properties:
+    -----------
+    None (all attributes are passed as parameters or are local variables within methods)
+
     """
 
     @staticmethod
     def mu(T: np.ndarray, A: float, B: float, C: float, E: float) -> np.ndarray:
         """
-        Empirical viscosity model for a pure TAG family.
+        General empirical viscosity function for a given pure TAG using andrade-style parameters.
 
         Parameters
         ----------
-        T : np.ndarray
+        T (np.ndarray) :
             Temperature in C.
-        A, B, C, E : float
+        A, B, C, E (float) :
             Empirical coefficients.
 
         Returns
@@ -145,10 +210,16 @@ class ViscosityCalculator:
     @staticmethod
     def mu_water(T: np.ndarray) -> np.ndarray:
         """
-        Pure water viscosity in cP.
+        Pure water viscosity in cP. Correlation form gives viscosity in Pa*s, converted to cP.
 
-        T is in C.
-        Correlation form gives viscosity in Pa*s, converted to cP.
+        Parameters:
+        T (np.ndarray) :
+             Temperature in C.
+        
+        Returns:
+        --------
+        np.ndarray
+            Viscosity in cP.
         """
         T = np.asarray(T, dtype=float)
         mu_pa_s = 2.414e-5 * 10.0 ** (247.8 / (T + 133.15))
@@ -160,7 +231,16 @@ class ViscosityCalculator:
         Pure glycerol viscosity in cP.
 
         A simple Andrade-style fit in ln(mu[cP]) over moderate temperatures.
-        This is intended for practical interpolation on your Streamlit page.
+
+        Parameters:
+        -----------
+        T (np.ndarray) : 
+            Temperature in C.
+
+        Returns:
+        --------
+        np.ndarray
+            Viscosity in cP.
         """
         T = np.asarray(T, dtype=float)
         Tk = T + 273.15
@@ -175,7 +255,19 @@ class ViscosityCalculator:
     @staticmethod
     def pure_viscosity(tag: str, T: np.ndarray) -> np.ndarray:
         """
-        Dispatch pure viscosity by tag.
+        Decide which pure viscosity function to call based on the tag.
+
+        Parameters:
+        -----------
+        tag (str) :
+            Component tag, e.g. 'C18', 'WATER', 'GLYCEROL'.
+        T (np.ndarray) :
+            Temperature in C.
+
+        Returns:
+        --------
+        np.ndarray
+            Viscosity in cP.
         """
         if tag == "WATER":
             return ViscosityCalculator.mu_water(T)
@@ -187,6 +279,16 @@ class ViscosityCalculator:
     def _normalize_tag(length: int) -> str:
         """
         Convert an integer carbon length to a supported tag string, e.g. 18 -> 'C18'.
+
+        Parameters:
+        -----------
+        length (int) :
+            Carbon chain length.
+
+        Returns:
+        --------
+        str
+            Normalized tag string, e.g. 'C18'.
         """
         tag = f"C{int(length)}"
         if tag not in COEFS:
@@ -199,6 +301,16 @@ class ViscosityCalculator:
     def _unwrap_component(component: Any) -> Any:
         """
         If the object is a MixtureComponent-like wrapper, return the underlying component.
+
+        Parameters:
+        -----------
+        component (Any) :
+            Component object, possibly wrapped in a MixtureComponent-like wrapper with a .component attribute.
+
+        Returns:
+        --------
+        Any
+            Unwrapped component object.
         """
         return getattr(component, "component", component)
 
@@ -206,6 +318,16 @@ class ViscosityCalculator:
     def _component_name(component: Any) -> str:
         """
         Best-effort component name.
+
+        Parameters:
+        -----------
+        component (Any) :
+            Component object, possibly with a .name attribute or a string representation.
+
+        Returns:
+        --------
+        str
+            Normalized component name in lowercase.
         """
         component = ViscosityCalculator._unwrap_component(component)
         return str(getattr(component, "name", component)).strip().lower()
@@ -214,14 +336,34 @@ class ViscosityCalculator:
     def _is_water_like(component: Any) -> bool:
         """
         Try to detect water entries.
+
+        Parameters:
+        -----------
+        component (Any) :
+            Component object, possibly with a .name attribute or a string representation.
+
+        Returns:
+        --------
+        bool
+            True if the component is likely to be water, False otherwise.
         """
         name = ViscosityCalculator._component_name(component)
-        return name in {"water", "h2o", "wat", "sol", "tip3p", "tip4p", "hoh"}
+        return name in {"water", "h2o", "h20", "wat", "sol", "tip3p", "tip4p", "hoh"}
 
     @staticmethod
     def _is_empty_glyceride(component: Any) -> bool:
         """
         Treat a glyceride with no attached fatty acids as glycerol.
+
+        Parameters:
+        -----------
+        component (Any) :
+            Component object, possibly with an .sn attribute that is a tuple/list of fatty acids.
+
+        Returns:
+        --------
+        bool
+            True if the component has an empty sn tuple/list, representing an empty glyceride, False otherwise.
         """
         component = ViscosityCalculator._unwrap_component(component)
         if not hasattr(component, "sn"):
@@ -237,6 +379,16 @@ class ViscosityCalculator:
     def _is_glycerol_like(component: Any) -> bool:
         """
         Try to detect glycerol entries.
+
+        Parameters:
+        -----------
+        component (Any) :
+            Component object, possibly with a .name attribute or a string representation, or an empty glyceride structure.
+        
+        Returns:
+        --------
+        bool
+            True if the component is likely to be glycerol, False otherwise.
         """
         if ViscosityCalculator._is_empty_glyceride(component):
             return True
@@ -256,6 +408,16 @@ class ViscosityCalculator:
         - component.fatty_acids -> iterable of FA-like objects with .length
         - component.fa1, component.fa2, component.fa3
         - component.acyl_chains -> iterable with .length
+
+        Parameters:
+        -----------
+        component (Any) :
+            Component object, possibly with various patterns for fatty-acid information.
+        
+        Returns:
+        --------
+        List[int]
+            List of fatty-acid chain lengths found in the component.
         """
         component = ViscosityCalculator._unwrap_component(component)
 
@@ -340,10 +502,16 @@ class ViscosityCalculator:
         - include glycerol explicitly as GLYCEROL
         - return relative contributions grouped by chain length / special component
 
+        Parameters:
+        -----------
+        mix (GlycerideMix) :
+            Mixture of glycerides / fatty acids / water / glycerol.
+    
         Returns
         -------
         List[Tuple[str, float]]
             Sorted list like [('C18', 0.5), ('C16', 0.2), ('WATER', 0.2), ('GLYCEROL', 0.1)].
+
         """
         if not mix.mix:
             raise ValueError("GlycerideMix is empty.")
@@ -398,6 +566,25 @@ class ViscosityCalculator:
     ):
         """
         Check whether the requested temperature window is valid for every tag.
+
+        Parameters:
+        -----------
+        tags (Iterable[str]) :
+            Iterable of component tags, e.g. ['C18', 'WATER'].
+        init_temp (float) :
+            Initial temperature in C.
+        final_temp (float) :
+            Final temperature in C.
+
+        Raises:
+        -------
+        ValueError
+            If final_temp < init_temp, or if any tag has an empirical validity range that does not cover the requested temperature window.
+        
+        Returns:
+        --------
+        None (raises an error if the temperature range is invalid for any tag)
+
         """
         tags = list(tags)
         t_min = float(init_temp)
@@ -425,8 +612,8 @@ class ViscosityCalculator:
         """
         Compute pure-component and mixture viscosity curves from a GlycerideMix.
 
-        Parameters
-        ----------
+        Parameters:
+        -----------
         mix : GlycerideMix
             Mixture of glycerides / fatty acids / water / glycerol.
         init_temp : float
@@ -436,8 +623,8 @@ class ViscosityCalculator:
         step_size : float, optional
             Step size in C.
 
-        Returns
-        -------
+        Returns:
+        --------
         Dict[str, Any]
             Dictionary containing tags, weights, mole fractions, temperature grid,
             pure-component viscosities, and the mixture viscosity.
@@ -475,8 +662,15 @@ class ViscosityCalculator:
         """
         Build an interactive Plotly figure from calculate(...).
 
-        Returns
-        -------
+        Parameters:
+        -----------
+        result (Dict[str, Any]) :
+            Result dictionary from calculate(...), containing tags, temperature grid, pure viscosities, and mixture viscosity.
+        title (str, optional) :
+            Title for the plot.
+
+        Returns:
+        --------
         go.Figure
             Plotly figure object.
         """
