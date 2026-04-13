@@ -878,7 +878,11 @@ class GlycerideMix:
             An optional mapping from Glyceride objects to 3-letter residue names for the PDB
             templates. If None, a mapping will be generated automatically. If provided, it must include
             entries for all glycerides in the mixture.
-        
+
+        Returns:
+        --------
+        mda.Universe :
+            An MDAnalysis Universe containing the packed box with coordinates in angstroms and unit cell set.
         """
         if not self.mix:
             raise ValueError("GlycerideMix is empty.")
@@ -1051,9 +1055,9 @@ class GlycerideMix:
         tolerance : float
             Minimum distance tolerance for Packmol.
 
-        Returns
+        Returns:
         -------
-        str
+        str :
             The content of the Packmol input file.
         """
         Lx, Ly, Lz = box
@@ -1165,10 +1169,16 @@ class GlycerideMix:
         return total
 
     def __repr__(self):
+        """
+        Return a string representation of the GlycerideMix instance, showing each glyceride and its quantity in the mixture.
+        """
         parts = [f"{glyceride.name}: {qty}" for glyceride, qty in self.mix.items()]
         return "Glyceride_Composition({" + ", ".join(parts) + "})"
 
     def __str__(self):
+        """
+        Return a tabulated string representation of the GlycerideMix instance, showing each glyceride and its quantity in the mixture in a table format.
+        """
         import tabulate
 
         table = [[glyceride.name, qty] for glyceride, qty in self.mix.items()]
