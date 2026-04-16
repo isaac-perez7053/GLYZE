@@ -148,6 +148,7 @@ class Esterifier:
         initial_conc: List[int],
         ks: List[float],
         chem_flag=False,
+        units: str = "moles",
     ) -> PKineticSim:
         """
         Will simulate the batch reaction for the given glyceride species.
@@ -359,41 +360,6 @@ class Esterifier:
 
         ks_internal = np.asarray(ks_internal, dtype=float)
 
-        # # sanity checks
-        # ns = len(species_names)
-        # nr = len(rxn_names)
-        # assert react_stoic.shape == (
-        #     ns,
-        #     nr,
-        # ), f"react_stoic shape {react_stoic.shape} != (ns, nr)=({ns}, {nr})"
-        # assert prod_stoic.shape == (
-        #     ns,
-        #     nr,
-        # ), f"prod_stoic shape {prod_stoic.shape} != (ns, nr)=({ns}, {nr})"
-        # assert ks.shape == (nr,), f"k_det shape {ks.shape} != (nr,)={nr}"
-        # assert init_state.shape == (
-        #     ns,
-        # ), f"init_state shape {init_state.shape} != (ns,)={ns}"
-
-        # print("Species index mapping:")
-        # for i, nm in enumerate(species_names):
-        #     print(f"  [{i:2d}] {nm}")
-        # print()
-        # print("First few reactions and stoichiometry rows:")
-        # for i in range(min(5, len(rxn_names))):
-        #     print(f"{i:3d}: {rxn_names[i]}")
-        #     print("    Reactants:", np.where(react_stoic.T[i] != 0)[0])
-        #     print("    Products: ", np.where(prod_stoic.T[i] != 0)[0])
-        # print()
-        # np.set_printoptions(linewidth=np.inf)
-        # print(f"Printing species names: {species_names}")
-        # print(
-        #     f"Printing reaction stoichiometry:\nReactants:\n{np.array2string(react_stoic.T)}\nProducts:\n{np.array2string(prod_stoic.T)}"
-        # )
-        # print(f"Printing Initial state: {init_state}")
-        # print(f"Printing rate constants: {ks}")
-        # print(f"Printing shape of reactant stoichiometry: {react_stoic.shape}")
-
         return PKineticSim(
             species_names=species_names,
             react_stoic=react_stoic,
@@ -402,4 +368,5 @@ class Esterifier:
             k_det=ks_internal,
             rxn_names=rxn_names,
             chem_flag=chem_flag,
+            units=units,
         )

@@ -6,8 +6,9 @@ from glyze.chem_processor.viscosity_calculator import ViscosityCalculator
 from glyze.glyceride_mix import GlycerideMix
 
 
-
-st.set_page_config(page_title="GLYZE — Viscosity Prediction", page_icon="🧪", layout="wide")
+st.set_page_config(
+    page_title="GLYZE — Viscosity Prediction", page_icon="🧪", layout="wide"
+)
 
 # Reuse the exact style from home.py
 st.markdown(
@@ -369,12 +370,10 @@ def get_mix_rows():
     return st.session_state.setdefault("mix_rows", [])
 
 
-
 def get_processor_rows():
     if "processor_mix_rows" in st.session_state:
         return st.session_state["processor_mix_rows"]
     return get_mix_rows()
-
 
 
 def unwrap_component(comp):
@@ -382,7 +381,6 @@ def unwrap_component(comp):
     Return the underlying chemical object/string when rows store MixtureComponent-like wrappers.
     """
     return getattr(comp, "component", comp)
-
 
 
 def comp_display_name(comp) -> str:
@@ -394,7 +392,6 @@ def comp_display_name(comp) -> str:
     return str(comp)
 
 
-
 def build_mix_preview_dataframe(rows):
     return pd.DataFrame(
         {
@@ -404,24 +401,26 @@ def build_mix_preview_dataframe(rows):
     )
 
 
-
 def build_viscosity_mix(rows):
     """
     Convert MixRow entries into a GlycerideMix compatible with ViscosityCalculator.
     """
     if not rows:
-        raise ValueError("No mixture rows were found. Please initialize a mixture first.")
+        raise ValueError(
+            "No mixture rows were found. Please initialize a mixture first."
+        )
 
     mix_dict = {}
     for row in rows:
         comp = unwrap_component(row.comp)
         qty = float(row.moles)
         if qty < 0:
-            raise ValueError(f"Negative moles are not allowed for {comp_display_name(comp)}.")
+            raise ValueError(
+                f"Negative moles are not allowed for {comp_display_name(comp)}."
+            )
         mix_dict[comp] = mix_dict.get(comp, 0.0) + qty
 
     return GlycerideMix(mix_dict)
-
 
 
 def build_summary_dataframe(result):
@@ -434,14 +433,12 @@ def build_summary_dataframe(result):
     )
 
 
-
 def build_curve_dataframe(result):
     df = pd.DataFrame({"Temperature (C)": result["temperature_C"]})
     for i, tag in enumerate(result["tags"]):
         df[f"{tag} Viscosity (cP)"] = result["pure_viscosities_cP"][i]
     df["Mixture Viscosity (cP)"] = result["mixture_viscosity_cP"]
     return df
-
 
 
 def initialize_viscosity_state():
@@ -459,7 +456,9 @@ if "visc_calculated" not in st.session_state:
 
 
 st.markdown('<div class="glyze-card">', unsafe_allow_html=True)
-st.markdown('<div class="start-title">Viscosity Prediction</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="start-title">Viscosity Prediction</div>', unsafe_allow_html=True
+)
 st.markdown(
     '<div class="start-subtitle">Use the current mixture to estimate component and mixture viscosity as a function of temperature.</div>',
     unsafe_allow_html=True,
@@ -469,9 +468,13 @@ rows = get_processor_rows()
 
 with st.expander("Current mixture", expanded=True):
     if rows:
-        st.dataframe(build_mix_preview_dataframe(rows), use_container_width=True, hide_index=True)
+        st.dataframe(
+            build_mix_preview_dataframe(rows), use_container_width=True, hide_index=True
+        )
     else:
-        st.info("No mixture is currently loaded. Create or upload a mixture first on the mixture page.")
+        st.info(
+            "No mixture is currently loaded. Create or upload a mixture first on the mixture page."
+        )
 
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -495,6 +498,7 @@ if run_prediction:
     try:
         mix = build_viscosity_mix(rows)
         import inspect
+
         result, fig = ViscosityCalculator.calculate_and_plot(
             mix=mix,
             init_temp=float(init_temp),

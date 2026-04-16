@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import re
 import sys
-import os
 
 
 # Mark which real OPLS types are alkene C / H
