@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import numpy as np
 from typing import Dict, List, Tuple
 from glyze.glyceride import FattyAcid, SymmetricGlyceride, FattyAcid
@@ -9,11 +8,33 @@ from .p_kinetic_sim import PKineticSim
 
 
 class Esterifier:
+    """
+    Esterification batch reactor model, makes a composition of free fatty acids, 
+    mags, dags, and tags. 
+
+    Attributes:
+    -----------
+
+    Class Methods:
+    --------------
+
+    Methods:
+    --------
+
+    [Static Method]:
+    esterification_rxn_list: gives a list of chemical reactions occuring in the
+    esterification reaction
+    esterification: simulates the batch reaction given a list of fatty acids
+
+
+    Properties:
+    -----------
+
+    
+    """
 
     @staticmethod
-    def esterification_rxn_list(
-        list_of_fa: List[FattyAcid],
-    ) -> List[str]:
+    def esterification_rxn_list(list_of_fa: List[FattyAcid],) -> List[str]:
         """
         Return a list containing strings that each represent the
         chemical reactions occurring in the esterification reaction

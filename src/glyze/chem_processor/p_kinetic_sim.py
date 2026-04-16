@@ -29,6 +29,34 @@ class PKineticSim:
         Product stoichiometry matrix P (ns, nr).
     init_state : np.ndarray
         Initial state vector (ns,).
+    k_det : np.ndarray
+        Reaction rates for the chemical reactions (nr,).
+    rxn_names: list
+        A list of the chemical reaction names
+    chem_flag: bool
+        To run the chemical reactions
+    overall_order: float
+        The reaction order, 1st, 2nd, 3rd...
+
+    Class Methods:
+    --------------
+
+    Methods:
+    --------
+    S: checks the arrays for both the product and reactant arrays
+    alpha: kinetic orders --> array to writes out the reactions
+    rates: takes the kinetic rates to put in the equation
+    rhs: solves the matrix / systems of equations
+    solve: solves the odes
+    plot: Plots the specific species at any given time
+    plot_interactive: Makes the plot interactive with the user, giving it a pointer at any moment
+    to_csv: converts the spieces and concentrations into a csv
+
+    Properties:
+    -----------
+    glyceride_mix: gives the composition of the esterification or interesterification
+
+
     """
 
     species_names: list
@@ -41,6 +69,13 @@ class PKineticSim:
     overall_order: float | None = None
 
     def S(self) -> np.ndarray:
+        """
+        Returns the array of the difference of product and reactant stoic
+
+        Parameters: 
+
+        Returns: array
+        """
         return self.prod_stoic - self.react_stoic
 
     def alpha(self) -> np.ndarray:
@@ -62,7 +97,13 @@ class PKineticSim:
 
     def rates(self, x: np.ndarray) -> np.ndarray:
         """
-        r_j(x) = k_j * sigma_i x_i^{alpha_ij}, robust at x_i=0.
+        Puts the rates towards the reactants and products
+
+        Parameters: x, the array of rates
+
+        Returns: array that the rates attaches to the reactants or products
+
+        Reference: r_j(x) = k_j * sigma_i x_i^{alpha_ij}, robust at x_i=0.
         """
         alpha = self.alpha()  # (ns, nr)
         k = self.k_det  # (nr,)
@@ -72,6 +113,13 @@ class PKineticSim:
         return k * term
 
     def rhs(self, t, x):
+        """
+        Sets up the ode with time and the reactants and products
+
+        Parameters: time, the rates+reactants/products
+
+        Returns: the set up matrix expression + begins to solve it
+        """
         return self.S() @ self.rates(x)
 
     def solve(
@@ -85,6 +133,10 @@ class PKineticSim:
         """
         Integrate the ODE system.
         - Default method 'LSODA'
+
+        Parmeters: time span (how the reaction runs)
+
+        Returns: the time and the concentration of each speices
         """
         if t_eval is None:
             t_eval = np.linspace(t_span[0], t_span[1], 400)
@@ -104,6 +156,10 @@ class PKineticSim:
     def plot(self, sol, show_species: list[str] | None = None, figsize=(14, 10)):
         """
         Plot specified species (or all if None)
+
+        Parameter: solution of solve, and the spieces wanted to plot
+
+        Returns: the plot
         """
         if not sol.success:
             raise RuntimeError(f"Integration failed: {sol.message}")
@@ -160,8 +216,9 @@ class PKineticSim:
         """
         Interactive Plotly plot.
 
-        Parameters:
-            TODO: Write the docstring
+        Parameters: the solution of the solve function
+
+        Returns: an interative plot
         """
         import plotly.graph_objects as go
 
