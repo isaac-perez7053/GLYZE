@@ -17,6 +17,68 @@ DELTA_G_MAG = -1.986e7
 DELTA_G_DAG = -4.687e7
 DELTA_G_TAG = -7.388e7
 
+_POLYMORPH_IDX = {"alpha": 0, "beta_prime": 1, "beta": 2}
+
+R = 8.314
+# In form -> Param: (alpha, beta', beta)
+# Params are taken from the Seilert PII-DL model. 2021, Wesdorp revisited.
+# Take from: 
+#              Seilert J, Moorthy AS, Kearsley AJ, Floter E. Revisiting a model
+#             to predict pure triglyceride thermodynamic properties: parameter
+#             optimization and performance. J Am Oil Chem Soc. 2021;98: 837-850.
+params = {
+    "h": (2.65, 3.48, 3.78),
+    "s": (5.92, 9.71, 11.55),
+    "h0": (-25.26, -26.36, -23.9),
+    "s0": (-2.47, -13.81, -7.62),
+    "hxy": (-16.97, -22.13, -19.96),
+    "sxy": (-45.51, -67.35, -66.92),
+    "k": (3.78, 2.28, 3.92),
+    "x0": (2.68, 3.28, 1.45),
+    "hodd": (0, 0, 0),
+    "sodd": (0, 0, 0),
+    "A0": (-1.39, -2.08, -1.26),
+    "B0": (-8.99, -6.55, -14.57),
+    "AO": (-9.0581, -7.4543, -8.0481),
+    "Aodd": (-0.1958, -0.3075, -0.0193),
+    "Bodd": (-0.0025, 0.005, 0.0082),
+    "Ax": (0.0029, -0.1036, 0.07413),
+    "Ax2": (-0.0619116, -0.018881, -0.0348596),
+    "Axy": (0.115128, 0.073941, 0.0077142),
+    "Ay": (-0.453461, -0.49721, -0.404136),
+    "Ay2": (0.005827, 0.0115995, 0.0111938),
+    "Bx": (-0.00111, 0.54997, -0.31675),
+    "Bx2": (0.148938, 0.074136, 0.086967),
+    "Bxy": (-0.365917, -0.340928, 0.040642),
+    "By": (1.41154, 2.34238, 0.5504),
+    "By2": (-0.001766, -0.135735, 0.000945),
+    "Tinf": (401.15, 401.15, 401.15),
+    "AE": (-0.42, -1.13, -1.3),
+    "Al": (-2.82, -3.97, -4.4),
+    "Ale": (-5.06, -4.55, -12.37),
+    "AOO": (-2.14, -0.65, -2.91),
+    "AEE": (-1.59, 0.06, 0.21),
+    "All": (-1.79, -1.26, -59.47),
+    "Alele": (-0.54, 0.55, -25.18),
+    "AOl": (-0.12, 0.06, 0.74),
+    "Aole": (2, 1.4, 2.94),
+    "Alle": (-1.28, -0.89, 57.4),
+    "BO": (-8.99, -6.55, -14.57),
+    "Bl": (4.47, 5.27, 4.3),
+    "Ble": (2.83, 0.3, 30.99),
+    "fxy": (0.276020353, 0.807078349, 0.248679327),
+    "Hsat": (107.8559346, 136.7393561, 167.6963606),
+    "Hunsat": (75.03593461, 115.2993561, 140.2063606),
+    "h0hat": (-29.94406539, -44.22064387, -28.86363937),
+    "s0hat": (-15.03168627, -68.16672684, -21.75885719),
+    "As": (-8.760511124, -5.686821343, -5.751999692),
+    "Bs": (-2.539136193, -7.020260231, -1.88388374),
+    "Tsat": (320.174013, 333.4100601, 336.4433316),
+    "Au": (-10.15051112, -7.766821343, -7.011999692),
+    "Bu": (-11.52913619, -13.57026023, -16.45388374),
+    "Tunsat": (296.1470406, 308.9663356, 312.5445738),
+}
+
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
     """Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields."""
@@ -129,7 +191,7 @@ def _fa_key(fa: Optional[FattyAcid]) -> tuple:
 class FattyAcid:
     """
     Fatty acid chain is built, charteristics of them are classified here and is used throughout
-    the package. 
+    the package.
 
     Attributes
     ----------
@@ -159,7 +221,7 @@ class FattyAcid:
     num_carbons: indicats the total amount of carbons in the free fatty acid
 
     name: generates an identification of the fatty acid, using the specified naming convention
-    
+
     [Cashed]:
     _cached_rdkit_mol: the stored molecules moles
 
@@ -317,7 +379,6 @@ class FattyAcid:
         branches = tuple(sorted((int(p), str(lbl)) for p, lbl in self.branches))
         return FattyAcid(self.length, positions, stereo, branches)
 
-
     def vapor_pressure(self, T_K: float) -> float:
         """
         Estimate vapor pressure using the Ceriani & Meirelles (2004)
@@ -396,6 +457,11 @@ class FattyAcid:
         # Eq. A.16
         return np.exp(Ap + Bp / (T_K**1.5) - Cp * np.log(T_K) - Dp * T_K)
 
+    def to_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
+        return Chem.Mol(
+            self._cached_optimized_rdkit_mol if optimize else self._cached_rdkit_mol
+        )
+
     def _build_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
         """
         Convert the fatty acid to an RDKit molecule.
@@ -473,19 +539,6 @@ class FattyAcid:
         return mol
 
     @cached_property
-    def _cached_rdkit_mol(self) -> Chem.Mol:
-        return self._build_rdkit_mol(optimize=False)
-
-    @cached_property
-    def _cached_optimized_rdkit_mol(self) -> Chem.Mol:
-        return self._build_rdkit_mol(optimize=True)
-
-    def to_rdkit_mol(self, optimize: bool = False) -> Chem.Mol:
-        return Chem.Mol(
-            self._cached_optimized_rdkit_mol if optimize else self._cached_rdkit_mol
-        )
-
-    @cached_property
     def molar_mass(self) -> float:
         """Calculate the molar mass of the fatty acid in g/mol"""
         # Build RDkit molecule and sum atomic masses
@@ -495,6 +548,14 @@ class FattyAcid:
             mass += atom.GetMass()
 
         return mass
+
+    @cached_property
+    def _cached_rdkit_mol(self) -> Chem.Mol:
+        return self._build_rdkit_mol(optimize=False)
+
+    @cached_property
+    def _cached_optimized_rdkit_mol(self) -> Chem.Mol:
+        return self._build_rdkit_mol(optimize=True)
 
     @property
     def num_carbons(self) -> int:
@@ -526,6 +587,11 @@ class FattyAcid:
             parts.append(f"M{bpos:02d}")  # Only 'Me' supported now
         return "".join(parts)
 
+    @property
+    def num_dbs(self) -> int:
+        """Return the number of double bonds present in the fatty acid"""
+        return len(self.db_positions)
+
 
 class Glyceride:
     """
@@ -548,13 +614,13 @@ class Glyceride:
     swap_fatty_acids: Swaps two of the fatty acids in the glycerides and returns a deepcopy of the new glyceride.
     to_rdkit_mol: Takes the molecule build in rdkit and returns the chemical moles for simulation purposes or prebuilt code purposes.
     rdkit_mol_to_gaussian_gjf: The molecule generated in rdkit and puts it gaussian for Molecular Dynamic simulations.
-    vapor_pressure: The vapor pressure for the glyceride at any given temperature. 
+    vapor_pressure: The vapor pressure for the glyceride at any given temperature.
 
 
     [Static Method]:
     mol_to_pdb: Convert an RDKit Mol object into a PDB file at the specified path.
     The file will persist until manually deleted.
-    
+
 
     Properties:
     -----------
@@ -860,7 +926,6 @@ class Glyceride:
         """
         Estimate glyceride vapor pressure using the Ceriani & Meirelles
         (2004) group-contribution method (Eqs. A.16-A.20, Table A4).
-
         """
         # Group parameters: (A1k, B1k, C1k, D1k, A2k, B2k, C2k, D2k)
         GP = {
@@ -952,6 +1017,156 @@ class Glyceride:
 
         # Eq. A.16
         return np.exp(Ap + Bp / (T_K**1.5) - Cp * np.log(T_K) - Dp * T_K)
+
+    def melting_enthalpy(self, polymorph: str) -> float:
+        """
+        Calculates the melting enthalpy of the glyceride.
+
+        Parameters:
+        -----------
+            polymorph (str): The polymorph of the pure TAG solid. Must be one
+                            of "alpha", "beta_prime", or "beta".
+
+        Returns:
+        --------
+            float: Melting enthalpy of the pure TAG in the solid phase [kJ/mol].
+        """
+        if polymorph not in _POLYMORPH_IDX:
+            raise NameError(
+                "The input polymorph must be one of: alpha, beta_prime, beta"
+            )
+
+        j = _POLYMORPH_IDX[polymorph]
+
+        def saturated_melting_enthalpy(glyceride: "Glyceride", polymorph: str) -> float:
+            n = sum(glyceride.chain_lengths)
+            n1 = glyceride.sn[0].length
+            n2 = glyceride.sn[1].length
+            n3 = glyceride.sn[2].length
+            Q = glyceride.chain_lengths[1]
+            P = min(n1, n3)
+            R = max(n1, n3)
+            x = Q - P
+            y = R - P
+
+            k = params["k"][j]
+            x0 = params["x0"][j]
+            fxy = 2 - np.exp(-(((x - x0) / k) ** 2)) - np.exp(-((y / k) ** 2))
+
+            h = params["h"][j]
+            h0 = params["h0"][j]
+            hxy = params["hxy"][j]
+            hodd = params["hodd"][j]
+
+            return (
+                h * n
+                + h0
+                + hxy * fxy
+                + hodd * Glyceride._fodd(n1, n2, n3) * Glyceride._f_beta(polymorph)
+            )
+
+        def unsaturated_melting_enthalpy(
+            glyceride: "Glyceride", polymorph: str
+        ) -> float:
+            pass  # not yet implemented
+
+        if sum(fa.num_dbs for fa in self.sn) == 0:
+            return saturated_melting_enthalpy(self, polymorph)
+        else:
+            return unsaturated_melting_enthalpy(self, polymorph)
+
+    def melting_temp(self, polymorph: str) -> float:
+        """
+        Calculates the melting temperature of the glyceride.
+
+        Parameters:
+        -----------
+            polymorph (str): The polymorph of the pure TAG solid. Must be one
+                            of "alpha", "beta_prime", or "beta".
+
+        Returns:
+        --------
+            float: Melting temperature of the pure TAG [K].
+        """
+        if polymorph not in _POLYMORPH_IDX:
+            raise NameError(
+                "The input polymorph must be one of: alpha, beta_prime, beta"
+            )
+
+        j = _POLYMORPH_IDX[polymorph]
+
+        def saturated_melting_temp(glyceride: "Glyceride", polymorph: str) -> float:
+            n = sum(glyceride.chain_lengths)
+            n1 = glyceride.sn[0].length
+            n2 = glyceride.sn[1].length
+            n3 = glyceride.sn[2].length
+            Q = glyceride.chain_lengths[1]
+            P = min(n1, n3)
+            R = max(n1, n3)
+            x = Q - P
+            y = R - P
+            fodd = Glyceride._fodd(n1, n2, n3)
+
+            # Method 1:
+            # Asat = (
+            #     params["A0"][j]
+            #     + params["Aodd"][j] * fodd
+            #     + params["Ax"][j]  * x
+            #     + params["Ax2"][j] * x ** 2
+            #     + params["Axy"][j] * x * y
+            #     + params["Ay"][j]  * y
+            #     + params["Ay2"][j] * y ** 2
+            # )
+            # Bsat = (
+            #     params["B0"][j]
+            #     + params["Bodd"][j] * fodd
+            #     + params["Bx"][j]  * x
+            #     + params["Bx2"][j] * x ** 2
+            #     + params["Bxy"][j] * x * y
+            #     + params["By"][j]  * y
+            #     + params["By2"][j] * y ** 2
+            # )
+
+            # Method 2:
+            hhat = (
+                params["h0"][j]
+                + (params["hxy"][j] * params["fxy"][j])
+                + (
+                    params["hodd"][j]
+                    * Glyceride._fodd(n1, n2, n3)
+                    * Glyceride._f_beta(polymorph)
+                )
+            )
+            shat = (
+                params["s0"][j]
+                + (params["sxy"][j] * params["fxy"][j])
+                + (
+                    params["sodd"][j]
+                    * Glyceride._fodd(n1, n2, n3)
+                    * Glyceride._f_beta(polymorph)
+                    * (
+                        R
+                        * np.log(2)
+                        * Glyceride._f_beta(polymorph)
+                        * Glyceride._fasym(y)
+                    )
+                )
+            )
+
+            Asat = (hhat / params["h"][j]) - (shat / params["s"][j])
+            Bsat = shat / params["s"][j]
+
+            Tinf = params["Tinf"][j]
+            return Tinf * (1 + (Asat / n) - ((Asat * Bsat) / (n**2)))
+
+        #TODO
+        def unsaturated_melting_temp(glyceride: "Glyceride", polymorph) -> float:
+            pass  # not yet implemented
+
+        if sum(fa.num_dbs for fa in self.sn) == 0:
+            return saturated_melting_temp(self, polymorph)
+        else:
+            return unsaturated_melting_temp(self, polymorph)
 
     # # find vapor pressure based on temperature
     # def vapor_pressure(self, T) -> float:
@@ -1072,6 +1287,18 @@ class Glyceride:
         rw.AddBond(c2, o3, Chem.BondType.SINGLE)
 
         return rw, (o2, o3, o1), [c1, c2, c3]
+
+    @staticmethod
+    def _fasym(y):
+        return 0 if y == 0 else 1
+
+    @staticmethod
+    def _fodd(n1, n2, n3):
+        return 1 if n1 % 2 == 1 or n2 % 2 == 1 or n3 % 2 == 1 else 0
+
+    @staticmethod
+    def _f_beta(polymorph):
+        return 1 if polymorph == "beta" else 0
 
     @property
     def molar_mass(self) -> float:

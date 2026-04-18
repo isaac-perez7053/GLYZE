@@ -13,3 +13,4 @@ src/glyze/gromacs_topgen.py
 src/glyze/gaussian.py
 src/glyze/packmol.py
 src/glyze/e_viscosity_model.py
+src/glyze/chem_processor/dsc_tester.ipynb

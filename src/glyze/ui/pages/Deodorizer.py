@@ -354,7 +354,7 @@ HERO_HTML = """
         <div class="butter-badge">🧈</div>
     </div>
     <div class="glyze-tagline">
-        Build and export a glyceride mixture — add by name or by structure, edit concentrations, switch units.
+        Deodorize a glyceride mixture! 
     </div>
 </div>
 <div class="glyze-divider"></div>
@@ -393,7 +393,7 @@ def classify_component(comp) -> str:
 def build_mix_object(rows):
     """Build a GlycerideMix from the current MixRow list."""
     mix_dict = {r.comp: r.moles for r in rows}
-    return GlycerideMix(mix_dict, units="mole", sort=True)
+    return GlycerideMix(mix_dict, units="Moles", sort=True)
 
 
 def build_feed_dataframe(rows):
@@ -583,7 +583,7 @@ if st.session_state["deod_ran"]:
     # Results view mode
     results_mode = st.radio(
         "Display results as:",
-        ["Comparison Table", "Bar Chart", "VP Diagnostics"],
+        ["Comparison Table", "Bar Chart"],
         horizontal=True,
         key="deod_results_mode",
     )

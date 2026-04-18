@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 from typing import Dict, Mapping, List, Tuple, Union
 from glyze.glyceride import Glyceride, FattyAcid
-import MDAnalysis as mda
 from glyze.packmol import PackmolSimulator
 import shutil
 import hashlib, re
@@ -11,6 +10,7 @@ from rdkit import Chem
 from rdkit.Geometry import Point3D
 from pathlib import Path
 import csv
+import MDAnalysis as mda
 from collections import Counter
 
 
@@ -477,8 +477,8 @@ class GlycerideMix:
         Notes
         -----
         - This updates both `self.mol_list[i]` and the corresponding entry
-          in `self._mol_by_glyceride` so that all later operations (e.g., building
-          Packmol templates) use the new coordinates.
+        in `self._mol_by_glyceride` so that all later operations (e.g., building
+        Packmol templates) use the new coordinates.
         """
         if len(pdb_files) != len(self.mol_list):
             raise ValueError(
@@ -740,6 +740,60 @@ class GlycerideMix:
                 writer.writerow(row)
 
         print(f"CSV file {output_path} created successfully")
+
+    def change_units(self, units: str) -> "GlycerideMix":
+        """
+        Change the units of the glyceride mixture and return the new glyceride mixture
+
+        Paramters:
+        ---------
+            units (str): The new units of the mixture. Can be 'Moles', 'Grams', or 'Mass Fractions'
+        """
+        components = self.components
+        quantities = self.quantities
+
+        if self.units == units:
+            return self
+
+        elif units not in ["Moles", "Grams", "Mass Fractions"]:
+            raise ValueError(
+                "Ensure that the units are either 'Moles', 'Grams', or 'Mass Fractions'!"
+            )
+
+        elif self.units == "Moles":
+            # From moles to grams
+            new_quantities_g = [
+                components[i].molar_mass * quantities[i] for i in range(len(components))
+            ]
+            if units == "Grams":
+                return GlycerideMix(mix=zip(components, new_quantities_g), units=units)
+            else:
+                total_g = sum(new_quantities_g)
+                new_quantities_g_fractions = [g / total_g for g in new_quantities_g]
+                return GlycerideMix(
+                    mix=zip(components, new_quantities_g_fractions), units=units
+                )
+
+        elif self.units == "Grams":
+            if units == "Moles":
+                new_quantities_mol = [
+                    quantities[i] / components[i].molar_mass
+                    for i in range(len(components))
+                ]
+                return GlycerideMix(
+                    mix=zip(components, new_quantities_mol), units=units
+                )
+            else:
+                total_g = sum(quantities)
+                new_quantities_g_fractions = [g / total_g for g in quantities]
+                return GlycerideMix(
+                    mix=zip(components, new_quantities_g_fractions), units=units
+                )
+
+        else:
+            raise ValueError(
+                f"Mass was normalized, therefore information about its total mass was lost! Current units: {self.units}"
+            )
 
     @property
     def name(self) -> str:

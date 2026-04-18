@@ -1,629 +1,911 @@
-# import numpy as np
-# from scipy.optimize import brentq
-# import pandas as pd
+"""
+References
+----------
+    Teles dos Santos, M., Gerbaud, V., Le Roux, G.A.C. (2013). Modeling and
+    simulation of melting curves and chemical interesterification of binary blends
+    of vegetable oils. Chemical Engineering Science, 87, 14-22.
+"""
+
+from __future__ import annotations
+
+import sys
+import warnings
+import pandas as pd
+from gamspy import (
+    Container,
+    Set,
+    Parameter,
+    Variable,
+    Equation,
+    Model,
+    Sum,
+    Sense,
+)
+
+from gamspy.math import log
+
+from glyze.glyceride import Glyceride
+from glyze.glyceride_mix import GlycerideMix, MixtureComponent
+import numpy
 
 
-# class DSC:
+# TODO: Add unsaturated contribution
+R = 8.314
+# Canonical list of all phase labels used throughout the model
+PHASES = ["liquid", "alpha", "beta_prime", "beta"]
 
-#     def sfc(mix: GlycerideMix, model: str):
-#         """ """
 
-#     # Database of TAG properties (beta-prime)
-#     TAG_DATABASE = {
-#         "TAG": [
-#             "C4",
-#             "C5",
-#             "C6",
-#             "C7",
-#             "C8",
-#             "C9",
-#             "C10",
-#             "C11",
-#             "C12",
-#             "C13",
-#             "C14",
-#             "C15",
-#             "C16",
-#             "C17",
-#             "C18",
-#             "C19",
-#             "C20",
-#         ],
-#         "M_gmol": [
-#             302.367,
-#             344.448,
-#             386.529,
-#             428.610,
-#             470.691,
-#             512.772,
-#             554.853,
-#             596.934,
-#             639.015,
-#             681.096,
-#             723.177,
-#             765.258,
-#             807.339,
-#             849.420,
-#             891.501,
-#             933.582,
-#             975.663,
-#         ],
-#         "dHfus_betaPrime_Jg": [
-#             130.4,
-#             137.06,
-#             142.44,
-#             126.655,
-#             128.45,
-#             101.6,
-#             161.825,
-#             130.75,
-#             158.1,
-#             134.55,
-#             171.35,
-#             165.4,
-#             191.015,
-#             175.1,
-#             200.05,
-#             172.8,
-#             193.575,
-#         ],
-#         "Tm_betaPrime_C": [
-#             -75,
-#             -60,
-#             -42.5,
-#             -7.8,
-#             -4.1,
-#             8.535,
-#             23.83,
-#             29.23,
-#             40.30,
-#             42.435,
-#             51.67,
-#             54.48,
-#             61.37,
-#             62.335,
-#             68.395,
-#             68.09,
-#             73.585,
-#         ],
-#     }
+class DSC:
+    """ """
 
-#     # test cases
-#     TEST_CASES = [
-#         {
-#             "id": 86,
-#             "TAG_names": ["C8", "C10", "C14", "C16"],
-#             "w": [0.15, 0.25, 0.5, 0.1],
-#             "exp_SFC": [59, 55, 47, 33, 18],
-#         },
-#         {
-#             "id": 132,
-#             "TAG_names": [
-#                 "C4",
-#                 "C6",
-#                 "C7",
-#                 "C8",
-#                 "C9",
-#                 "C10",
-#                 "C11",
-#                 "C12",
-#                 "C13",
-#                 "C16",
-#                 "C17",
-#                 "C18",
-#                 "C19",
-#                 "C20",
-#             ],
-#             "w": [
-#                 0.06,
-#                 0.09,
-#                 0.10,
-#                 0.06,
-#                 0.06,
-#                 0.09,
-#                 0.08,
-#                 0.03,
-#                 0.03,
-#                 0.09,
-#                 0.08,
-#                 0.07,
-#                 0.05,
-#                 0.04,
-#             ],
-#             "exp_SFC": [27.295, 18.035, 11.195, 7.27, 4.095],
-#         },
-#         {
-#             "id": 215,
-#             "TAG_names": [
-#                 "C8",
-#                 "C9",
-#                 "C10",
-#                 "C11",
-#                 "C12",
-#                 "C13",
-#                 "C14",
-#                 "C16",
-#                 "C17",
-#                 "C18",
-#             ],
-#             "w": [0.105, 0.118, 0.162, 0.158, 0.064, 0.058, 0.007, 0.163, 0.152, 0.013],
-#             "exp_SFC": [56, 48, 36, 15, 5],
-#         },
-#         {
-#             "id": 113,
-#             "TAG_names": [
-#                 "C4",
-#                 "C5",
-#                 "C6",
-#                 "C7",
-#                 "C8",
-#                 "C9",
-#                 "C10",
-#                 "C11",
-#                 "C12",
-#                 "C13",
-#                 "C14",
-#                 "C15",
-#                 "C16",
-#                 "C17",
-#                 "C18",
-#                 "C19",
-#                 "C20",
-#             ],
-#             "w": [
-#                 0.044,
-#                 0.051,
-#                 0.059,
-#                 0.066,
-#                 0.071,
-#                 0.075,
-#                 0.075,
-#                 0.073,
-#                 0.07,
-#                 0.068,
-#                 0.065,
-#                 0.062,
-#                 0.059,
-#                 0.055,
-#                 0.045,
-#                 0.035,
-#                 0.027,
-#             ],
-#             "exp_SFC": [35, 29, 19, 10, 4.2],
-#         },
-#         {
-#             "id": 134,
-#             "TAG_names": [
-#                 "C4",
-#                 "C5",
-#                 "C6",
-#                 "C7",
-#                 "C8",
-#                 "C9",
-#                 "C10",
-#                 "C11",
-#                 "C14",
-#                 "C15",
-#                 "C16",
-#                 "C17",
-#                 "C18",
-#                 "C19",
-#                 "C20",
-#             ],
-#             "w": [
-#                 0.06,
-#                 0.07,
-#                 0.05,
-#                 0.06,
-#                 0.05,
-#                 0.06,
-#                 0.1,
-#                 0.1,
-#                 0.07,
-#                 0.07,
-#                 0.08,
-#                 0.08,
-#                 0.06,
-#                 0.05,
-#                 0.04,
-#             ],
-#             "exp_SFC": [36, 30, 24, 14.76, 8.5],
-#         },
-#         {
-#             "id": 183,
-#             "TAG_names": ["C6", "C8", "C10", "C12", "C14", "C16"],
-#             "w": [0.05, 0.15, 0.2, 0.05, 0.45, 0.1],
-#             "exp_SFC": [58, 53.8, 44, 27, 15],
-#         },
-#         {
-#             "id": 312,
-#             "TAG_names": [
-#                 "C5",
-#                 "C6",
-#                 "C7",
-#                 "C8",
-#                 "C9",
-#                 "C10",
-#                 "C11",
-#                 "C12",
-#                 "C13",
-#                 "C15",
-#                 "C16",
-#                 "C17",
-#                 "C18",
-#                 "C19",
-#                 "C20",
-#             ],
-#             "w": [
-#                 0.019,
-#                 0.053,
-#                 0.087,
-#                 0.018,
-#                 0.041,
-#                 0.099,
-#                 0.111,
-#                 0.03,
-#                 0.039,
-#                 0.004,
-#                 0.186,
-#                 0.157,
-#                 0.11,
-#                 0.04,
-#                 0.006,
-#             ],
-#             "exp_SFC": [62.67, 58.69, 49, 34.34, 22.67],
-#         },
-#         {
-#             "id": 369,
-#             "TAG_names": ["C6", "C8", "C10", "C14", "C16"],
-#             "w": [0.05, 0.1, 0.3, 0.35, 0.20],
-#             "exp_SFC": [58.8, 51.9, 42.7, 28.8, 14.7],
-#         },
-#         {
-#             "id": 145,
-#             "TAG_names": [
-#                 "C4",
-#                 "C5",
-#                 "C6",
-#                 "C7",
-#                 "C8",
-#                 "C9",
-#                 "C10",
-#                 "C11",
-#                 "C12",
-#                 "C13",
-#                 "C14",
-#                 "C16",
-#                 "C17",
-#                 "C18",
-#             ],
-#             "w": [
-#                 0.007,
-#                 0.043,
-#                 0.085,
-#                 0.112,
-#                 0.068,
-#                 0.075,
-#                 0.101,
-#                 0.098,
-#                 0.041,
-#                 0.037,
-#                 0.005,
-#                 0.1,
-#                 0.093,
-#                 0.135,
-#             ],
-#             "exp_SFC": [20.39, 18.56, 14.33, 6.395, 3.415],
-#         },
-#         {
-#             "id": 151,
-#             "TAG_names": ["C10", "C12", "C18"],
-#             "w": [0.5, 0.4, 0.1],
-#             "exp_SFC": [83.5, 76.88, 52.125, 0.075, -0.21],
-#         },
-#         {
-#             "id": 137,
-#             "TAG_names": [
-#                 "C4",
-#                 "C5",
-#                 "C6",
-#                 "C7",
-#                 "C8",
-#                 "C9",
-#                 "C10",
-#                 "C11",
-#                 "C12",
-#                 "C13",
-#                 "C14",
-#                 "C16",
-#                 "C17",
-#                 "C18",
-#             ],
-#             "w": [
-#                 0.005,
-#                 0.044,
-#                 0.091,
-#                 0.122,
-#                 0.077,
-#                 0.087,
-#                 0.12,
-#                 0.117,
-#                 0.048,
-#                 0.043,
-#                 0.005,
-#                 0.12,
-#                 0.111,
-#                 0.01,
-#             ],
-#             "exp_SFC": [16.2, 11.705, 3.755, 1.095, 0.205],
-#         },
-#         {
-#             "id": 141,
-#             "TAG_names": ["C4", "C6", "C8", "C10", "C12", "C14", "C15", "C16", "C18"],
-#             "w": [0.05, 0.03, 0.01, 0.03, 0.04, 0.11, 0.02, 0.26, 0.09],
-#             "exp_SFC": [54.965, 53.705, 48.465, 34.34, 24.165],
-#         },
-#         {
-#             "id": 309,
-#             "TAG_names": ["C8", "C9", "C10", "C11", "C12", "C13", "C14", "C15"],
-#             "w": [0.1, 0.1, 0.05, 0.05, 0.15, 0.15, 0.2, 0.2],
-#             "exp_SFC": [73.12, 66.725, 58.26, 41.165, 23.28],
-#         },
-#         {
-#             "id": 359,
-#             "TAG_names": ["C6", "C8", "C10", "C12", "C14", "C16"],
-#             "w": [0.05, 0.15, 0.3, 0.1, 0.3, 0.1],
-#             "exp_SFC": [44.27, 35.86, 20.1, 7.135, 1.235],
-#         },
-#         {
-#             "id": 114,
-#             "TAG_names": ["C4", "C5", "C6", "C7", "C18", "C19", "C20"],
-#             "w": [0.13, 0.16, 0.18, 0.2, 0.14, 0.11, 0.08],
-#             "exp_SFC": [81.225, 79.315, 76.655, 65.695, 45.355],
-#         },
-#         {
-#             "id": 139,
-#             "TAG_names": ["C4", "C6", "C8", "C10", "C12", "C14", "C15", "C16", "C18"],
-#             "w": [0.07, 0.04, 0.02, 0.05, 0.06, 0.17, 0.03, 0.42, 0.14],
-#             "exp_SFC": [86.245, 83.235, 78.93, 70.685, 61.515],
-#         },
-#         {
-#             "id": 117,
-#             "TAG_names": [
-#                 "C4",
-#                 "C5",
-#                 "C6",
-#                 "C7",
-#                 "C8",
-#                 "C9",
-#                 "C10",
-#                 "C11",
-#                 "C12",
-#                 "C13",
-#                 "C14",
-#                 "C15",
-#                 "C16",
-#                 "C17",
-#                 "C18",
-#             ],
-#             "w": [
-#                 0.003,
-#                 0.027,
-#                 0.056,
-#                 0.075,
-#                 0.086,
-#                 0.092,
-#                 0.093,
-#                 0.091,
-#                 0.087,
-#                 0.084,
-#                 0.08,
-#                 0.077,
-#                 0.074,
-#                 0.069,
-#                 0.006,
-#             ],
-#             "exp_SFC": [31.88, 27.3, 17.51, 8.785, 3.265],
-#         },
-#         {
-#             "id": 358,
-#             "TAG_names": ["C8", "C10", "C14", "C16"],
-#             "w": [0.2, 0.15, 0.2, 0.45],
-#             "exp_SFC": [67.84, 68.85, 62.435, 48.445, 31.59],
-#         },
-#     ]
+    _cache = {}
 
-#     def tagprops(TAG_names):
-#         # get TAG properties
-#         db = pd.DataFrame(TAG_DATABASE)
+    @staticmethod
+    def g(T: float, mix: GlycerideMix, polymorph: str) -> float:
+        """
+        Calculate the intensive Gibbs energy g^j [J/mol] for phase j of the mixture
+        evaluated at temperature T.
 
-#         # Find matching rows
-#         mask = db["TAG"].isin(TAG_names)
-#         db_filtered = db[db["TAG"].isin(TAG_names)]
+        For the liquid phase (Eq. 6 in DosSantos et al.)
+        For a solid polymorph j (Eq. 8)
 
-#         # Ensure order matches TAG_names
-#         db_row = db_filtered.set_index("TAG").loc[TAG_names].reset_index()
+        Parameters
+        ----------
+        T : float
+            Temperature [K].
+        mix : GlycerideMix
+            Mixture whose TAG components carry melting data.
+        polymorph : str
+            One of "liquid", "alpha", "beta_prime", "beta".
 
-#         # Calculate enthalpy of fusion in J/mol
-#         dHf_Jmol = db_row["dHfus_betaPrime_Jg"].values * db_row["M_gmol"].values
+        Returns
+        -------
+        float
+            Intensive Gibbs energy of the phase [J/mol].
+        """
+        if polymorph not in PHASES:
+            raise ValueError(
+                f"Ensure that the polymorph is either liquid, beta, beta_prime, or alpha! "
+                f"Got '{polymorph}'."
+            )
 
-#         # Convert melting temp to Kelvin
-#         Tf_K = db_row["Tm_betaPrime_C"].values + 273.15
+        # Mole fractions: quantities stored in GlycerideMix are already in moles
+        # TODO: Ensure that the mixture is indeed in moles
+        total_moles = sum(mix.mix.values())
 
-#         return dHf_Jmol, Tf_K, db_row
+        # Calculate mole fractions
+        x = {comp: qty / total_moles for comp, qty in mix.mix.items()}
 
-#     def smoothing(TAG_names, x, dHf_Jmol, Tf_K, Tgrid_C, w_C):
-#         # smoothing method
-#         x = np.array(x).flatten()
-#         dHf_Jmol = np.array(dHf_Jmol).flatten()
-#         Tf_K = np.array(Tf_K).flatten()
-#         Tgrid_C = np.array(Tgrid_C).flatten()
+        if polymorph == "liquid":
+            # Eq. 6: ideal liquid phase
+            return (
+                R
+                * T
+                * sum(xi * (numpy.log(xi) if xi > 0 else 0.0) for xi in x.values())
+            )
 
-#         N = len(x)
+        # Solid phases: Eq. 8
+        g_solid = 0.0
+        for i, (comp, xi) in enumerate(x.items()):
+            if xi <= 0.0:
+                continue
+            glyceride = comp.component if isinstance(comp, MixtureComponent) else comp
+            if not isinstance(glyceride, Glyceride):
+                # Non-TAG components (water, glycerol) are fully liquid; skip in solid.
+                continue
 
-#         # Validate inputs
-#         assert len(TAG_names) == N and len(dHf_Jmol) == N and len(Tf_K) == N
-#         assert np.all(np.isfinite(x)) and np.all(x >= 0)
-#         assert abs(np.sum(x) - 1) < 1e-6
-#         assert np.all(np.isfinite(dHf_Jmol)) and np.all(dHf_Jmol > 0)
-#         assert np.all(np.isfinite(Tf_K)) and np.all(Tf_K > 0)
-#         assert np.isfinite(w_C) and w_C > 0
+            dH = glyceride.melting_enthalpy(polymorph)
+            Tm = glyceride.melting_temp(polymorph)
 
-#         xSum = np.sum(x)
-#         xRest = max(0, 1 - xSum)
-#         xTot = 1 - xRest
+            # Convert dH from kJ/mol -> J/mol if needed.  The params in glyceride.py
+            # yield values already in kJ/mol consistent with the Seilert PII-DL model,
+            # so we multiply by 1000 here.
+            dH_J = dH * 1_000.0
 
-#         R = 8.314462618
+            mu_solid = dH_J * (T / Tm - 1.0)  # chemical potential [J/mol]
+            g_solid += xi * (
+                mu_solid + R * T * numpy.log(DSC.gamma(mix, i, T, polymorph) * xi)
+            )
 
-#         # Saturation function
-#         def x_sat(dHf, Tf, T):
-#             return np.exp(-(dHf / R) * (1 / T - 1 / Tf))
+        return g_solid
 
-#         # Calculate pair solidus temperatures
-#         npairs = N * (N - 1) // 2
-#         ii = []
-#         jj = []
-#         Tij_K = []
+    @staticmethod
+    def gamma(mix: GlycerideMix, i: int, T: float, polymorph: str):
+        """
+        Calculate the activity coefficient of the ith TAG with polymorph (alpha, beta_prime, beta)
 
-#         for i in range(N - 1):
-#             for j in range(i + 1, N):
-#                 ii.append(i)
-#                 jj.append(j)
+        Parameters
+        ----------
 
-#                 xpair = x[i] + x[j]
-#                 if xpair <= 0:
-#                     Tij_K.append(np.nan)
-#                     continue
+        Returns
+        -------
+        """
+        # Assume ideal conditions for the alpha phase
+        if polymorph == "alpha":
+            return 1.0
+        else:
+            gE, A = DSC._excess_gibbs_free_energy(mix, T, polymorph)
+            n = len(mix.mix.keys())
+            return numpy.e ** (
+                (-gE + sum(A[i][j] for j in range(n) if j != i)) / (R * T)
+            )
 
-#                 Thigh = min(Tf_K[i], Tf_K[j]) - 1e-6
-#                 Tlow = 1.0
+    @staticmethod
+    def chemical_potential(T: float, glyceride: Glyceride, polymorph: str) -> float:
+        """
+        Calculate the chemical potential mu_i^{0,j} [J/mol] of a pure TAG i in
+        state j at temperature T (Eq. 7 in DosSantos et al.).
 
-#                 def f(T):
-#                     return (
-#                         x_sat(dHf_Jmol[i], Tf_K[i], T)
-#                         + x_sat(dHf_Jmol[j], Tf_K[j], T)
-#                         - xpair
-#                     )
+        For the liquid reference state the chemical potential is zero by definition.
 
-#                 try:
-#                     T_solidus = brentq(f, Tlow, Thigh)
-#                     Tij_K.append(T_solidus)
-#                 except:
-#                     Tij_K.append(np.nan)
+        Parameters
+        ----------
+        T : float
+            Temperature [K].
+        glyceride : Glyceride
+            Pure TAG whose melting properties are needed.
+        polymorph : str
+            One of "liquid", "alpha", "beta_prime", "beta".
 
-#         ii = np.array(ii)
-#         jj = np.array(jj)
-#         Tij_K = np.array(Tij_K)
-#         Tij_C = Tij_K - 273.15
+        Returns
+        -------
+        float
+            Chemical potential [J/mol].
+        """
+        if polymorph == "liquid":
+            return 0.0
+        elif polymorph in ["alpha", "beta_prime", "beta"]:
+            # melting_enthalpy returns kJ/mol; convert to J/mol
+            dH_J = glyceride.melting_enthalpy(polymorph) * 1_000.0
+            Tm = glyceride.melting_temp(polymorph)
+            return dH_J * (T / Tm - 1.0)
+        else:
+            raise ValueError(
+                "Ensure that the polymorph is either liquid, beta, beta_prime, or alpha!"
+            )
 
-#         # Calculate P(A;B) weighting
-#         P = np.zeros((N, N))
-#         for A in range(N):
-#             denom = 0
-#             for k in range(N):
-#                 if k == A:
-#                     continue
-#                 denom += x[A] + x[k]
+    @staticmethod
+    def _minimize_gibbs_two_phase(
+        T: float,
+        glyceride_mix: GlycerideMix,
+        solid_polymorph: str,
+        warm_start: dict | None = None,
+    ) -> dict:
+        """
+        Minimize the Gibbs Free Energy for a two-phase (liquid + one solid
+        polymorph) sub-problem at temperature T.
 
-#             for B in range(N):
-#                 if B == A:
-#                     continue
-#                 P[A, B] = (x[A] + x[B]) / denom if denom > 0 else 0
+        Parameters
+        ----------
+        T : float
+            Temperature [K].
+        glyceride_mix : GlycerideMix
+            TAG mixture with molar quantities.
+        solid_polymorph : str
+            One of "alpha", "beta_prime", "beta".
+        warm_start : dict or None
+            Optional mapping ``{(tag_name, phase): moles}`` from the previous
+            temperature step.
 
-#         # Calculate phi_ij
-#         raw = np.zeros(npairs)
-#         for k in range(npairs):
-#             A = ii[k]
-#             B = jj[k]
-#             raw[k] = x[A] * P[A, B] + x[B] * P[B, A]
+        Returns
+        -------
+        dict
+            Keys: "n_ij", "SFC", "status", "objective".
+        """
+        total_moles = sum(glyceride_mix.mix.values())
 
-#         c = xTot / np.sum(raw) if np.sum(raw) > 0 else 0
-#         phi_pct = 100 * c * raw
+        all_above_Tm = True
+        for comp in glyceride_mix.mix.keys():
+            glyceride = comp.component if isinstance(comp, MixtureComponent) else comp
+            if not isinstance(glyceride, Glyceride):
+                continue
+            if len([x for x in comp.component.sn if x is not None]) != 3:
+                continue
+            Tm = glyceride.melting_temp(solid_polymorph)
+            if T <= Tm:
+                all_above_Tm = False
+                break
 
-#         # Calculate smoothed SFC(T)
-#         SFC_pct = np.zeros(len(Tgrid_C))
-#         for t in range(len(Tgrid_C)):
-#             z = (Tgrid_C[t] - Tij_C) / w_C
-#             s = 1 / (1 + np.exp(z))  # smooth sigmoid
-#             SFC_pct[t] = np.sum(phi_pct * s)
+        if all_above_Tm:
+            equilibrium = {}
+            for comp, qty in glyceride_mix.mix.items():
+                equilibrium[(comp.name, "liquid")] = qty
+                equilibrium[(comp.name, solid_polymorph)] = 0.0
+            # Compute the all-liquid objective: sum_i n_i * RT * log(x_i)
+            obj_val = 0.0
+            for comp, qty in glyceride_mix.mix.items():
+                xi = qty / total_moles
+                if xi > 0:
+                    obj_val += qty * R * T * numpy.log(xi)
+            return {
+                "n_ij": equilibrium,
+                "SFC": 0.0,
+                "status": "OptimalSolution",
+                "objective": obj_val,
+            }
 
-#         return {"T_C": Tgrid_C, "SFC_pct": SFC_pct, "Tij_C": Tij_C, "phi_pct": phi_pct}
+        two_phases = ["liquid", solid_polymorph]
 
-#     def run_single_case(case, w_C=2.5):
-#         """Run a single test case and return RMSE."""
-#         TAG_names = case["TAG_names"]
-#         w = np.array(case["w"])
-#         exp_SFC = np.array(case["exp_SFC"])
+        m = Container()
 
-#         # Normalize mass fractions
-#         w = w / np.sum(w)
+        tag_names = [comp.name for comp in glyceride_mix.mix.keys()]
 
-#         # Get TAG properties
-#         dHf_Jmol, Tf_K, db_row = tagprops(TAG_names)
+        nc = Set(
+            container=m,
+            name="nc",
+            records=tag_names,
+            description="Number of Components (TAG species)",
+        )
+        np_set = Set(
+            container=m,
+            name="np",
+            records=two_phases,
+            description="Phases (liquid + one solid polymorph)",
+        )
 
-#         # Convert mass fractions to mole fractions
-#         M_gmol = db_row["M_gmol"].values
-#         n = w / M_gmol
-#         x = n / np.sum(n)
+        # Total moles of each TAG i  (n_i)
+        n_total_records = pd.DataFrame(
+            [(comp.name, qty) for comp, qty in glyceride_mix.mix.items()],
+            columns=["tag", "n_total"],
+        )
+        n_total = Parameter(
+            container=m,
+            name="n_total",
+            domain=[nc],
+            records=n_total_records,
+            description="Total moles of TAG i across all phases",
+        )
 
-#         # Temperature grid
-#         Tmin_C = 0
-#         Tmax_C = 50
-#         dT_C = 0.5
-#         Tgrid_C = np.arange(Tmin_C, Tmax_C + dT_C, dT_C)
+        # Pure-component chemical potentials mu_i^{0,j}(T) [J/mol]
+        mu_records_full = DSC._build_mu_records(T, glyceride_mix)
+        mu_records = mu_records_full[mu_records_full["phase"].isin(two_phases)]
+        mu_pure = Parameter(
+            container=m,
+            name="mu_pure",
+            domain=[nc, np_set],
+            records=mu_records,
+            description="Pure-component chemical potential of TAG i in phase j [J/mol]",
+        )
 
-#         # Run prediction
-#         out = smoothing(TAG_names, x, dHf_Jmol, Tf_K, Tgrid_C, w_C)
+        gamma_records_full = DSC._build_gamma_records(T, glyceride_mix)
+        gamma_records = gamma_records_full[gamma_records_full["phase"].isin(two_phases)]
+        gamma_param = Parameter(
+            container=m,
+            name="gamma_param",
+            domain=[nc, np_set],
+            records=gamma_records,
+            description="Activity coefficient of TAG i in phase j",
+        )
 
-#         # interpolate at experimental temperatures
-#         exp_T_C = np.array([5, 10, 15, 20, 25])
-#         pred_at_exp = np.interp(exp_T_C, out["T_C"], out["SFC_pct"])
+        # n_ij[i, j] – decision variables: moles of TAG i in phase j
+        n_ij = Variable(
+            container=m,
+            name="n_ij",
+            domain=[nc, np_set],
+            type="Positive",
+            description="Moles of TAG i in phase j",
+        )
 
-#         # Calculate RMSE and MAE
-#         err = pred_at_exp - exp_SFC
-#         rmse = np.sqrt(np.mean(err**2))
-#         mae = np.mean(np.abs(err))
+        n_ij.lo[nc, np_set] = 1e-12
 
-#         return {"id": case["id"], "RMSE": rmse, "MAE": mae, "n_TAGs": len(TAG_names)}
+        # Eq. 2: conservation of TAG i across all phases
+        n_consv = Equation(
+            container=m,
+            name="n_consv",
+            domain=[nc],
+            description="Conservation of TAG moles across phases",
+        )
+        n_consv[nc] = Sum(np_set, n_ij[nc, np_set]) == n_total[nc]
 
-#     def main():
-#         """Run all test cases and display RMSE results."""
-#         print("=" * 70)
-#         print("SFC Analysis - RMSE Results for All TAG Sets")
-#         print("=" * 70)
-#         print()
+        # Upper bound: n_ij[i,j] <= n_total[i]
+        n_upper = Equation(
+            container=m,
+            name="n_upper",
+            domain=[nc, np_set],
+            description="Upper bound: moles of TAG i in phase j <= total moles of TAG i",
+        )
+        n_upper[nc, np_set] = n_ij[nc, np_set] <= n_total[nc]
 
-#         results = []
+        # Total moles per phase
+        n_total_phase = Variable(
+            container=m,
+            name="n_total_phase",
+            domain=[np_set],
+            type="Positive",
+            description="Total moles in phase j",
+        )
 
-#         for case in TEST_CASES:
-#             try:
-#                 result = run_single_case(case, w_C=2.5)
-#                 results.append(result)
-#                 print(
-#                     f"Case {result['id']:3d} ({result['n_TAGs']:2d} TAGs): RMSE = {result['RMSE']:7.3f} SFC%,  MAE = {result['MAE']:7.3f} SFC%"
-#                 )
-#             except Exception as e:
-#                 print(f"Case {case['id']:3d}: ERROR - {str(e)}")
+        n_total_phase_def = Equation(
+            container=m,
+            name="n_total_phase_def",
+            domain=[np_set],
+            description="Total moles per phase",
+        )
+        n_total_phase_def[np_set] = n_total_phase[np_set] == Sum(nc, n_ij[nc, np_set])
 
-#         print()
-#         print("=" * 70)
-#         print("Summary Statistics")
-#         print("=" * 70)
+        # Temperature scalar
+        T_param = Parameter(
+            container=m,
+            name="T_param",
+            records=T,
+            description="Temperature [K]",
+        )
 
-#         if results:
-#             rmse_values = [r["RMSE"] for r in results]
-#             mae_values = [r["MAE"] for r in results]
+        # Gas constant scalar
+        R_param = Parameter(
+            container=m,
+            name="R_param",
+            records=R,
+            description="Gas constant [J/(mol K)]",
+        )
 
-#             print(f"Number of cases analyzed: {len(results)}")
-#             print(f"Average RMSE: {np.mean(rmse_values):.3f} SFC%")
-#             print(f"Median RMSE:  {np.median(rmse_values):.3f} SFC%")
-#             print(
-#                 f"Min RMSE:     {np.min(rmse_values):.3f} SFC% (TAG {results[np.argmin(rmse_values)]['id']})"
-#             )
-#             print(
-#                 f"Max RMSE:     {np.max(rmse_values):.3f} SFC% (TAG {results[np.argmax(rmse_values)]['id']})"
-#             )
-#             print()
-#             print(f"Average MAE:  {np.mean(mae_values):.3f} SFC%")
+        # Objective expression, equation 4
+        obj_expr = Sum(
+            (nc, np_set),
+            n_ij[nc, np_set]
+            * (
+                mu_pure[nc, np_set]
+                + R_param
+                * T_param
+                * log(
+                    gamma_param[nc, np_set] * n_ij[nc, np_set] / n_total_phase[np_set]
+                )
+            ),
+        )
 
-#         print("=" * 70)
+        gibbs_free_energy = Model(
+            m,
+            name="GibbsFreeEnergy",
+            equations=[n_consv, n_upper, n_total_phase_def],
+            problem="NLP",
+            sense=Sense.MIN,
+            objective=obj_expr,
+        )
+
+        # Initialize initial mixture with something nonzero to ensure
+        # log does not blow up
+        init_mix = 1e-6
+
+        for comp in glyceride_mix.mix.keys():
+            for phase in two_phases:
+                key = (comp.name, phase)
+                if warm_start is not None and key in warm_start:
+                    n_ij.l[comp.name, phase] = max(warm_start[key], init_mix)
+                else:
+                    if phase == "liquid":
+                        n_ij.l[comp.name, phase] = glyceride_mix.mix[comp]
+                    else:
+                        n_ij.l[comp.name, phase] = init_mix
+
+        for phase in two_phases:
+            phase_total = sum(
+                (
+                    max(warm_start.get((comp.name, phase), init_mix), init_mix)
+                    if warm_start is not None
+                    else (glyceride_mix.mix[comp] if phase == "liquid" else init_mix)
+                )
+                for comp in glyceride_mix.mix.keys()
+            )
+            n_total_phase.l[phase] = phase_total
+
+        # Solve
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                gibbs_free_energy.solve(output=sys.stdout)
+        except:
+            pass
+
+        # Extract results
+        results_n_ij = n_ij.records
+
+        total_solid_moles = 0.0
+        total_liquid_moles = 0.0
+        equilibrium = {}
+        if results_n_ij is not None:
+            for _, row in results_n_ij.iterrows():
+                tag = row["nc"]
+                phase = row["np"]
+                level = row["level"]
+                equilibrium[(tag, phase)] = level
+                if phase == solid_polymorph:
+                    total_solid_moles += level
+                elif phase == "liquid":
+                    total_liquid_moles += level
+
+        SFC = total_solid_moles / max(total_moles, 1e-12)
+
+        liquid_fraction = total_liquid_moles / max(total_moles, 1e-12)
+        SFC_TOL = 1e-4
+        if liquid_fraction < SFC_TOL:
+            SFC = 1.0
+        elif SFC < SFC_TOL:
+            SFC = 0.0
+
+        try:
+            obj_val = gibbs_free_energy.objective_value
+        except Exception:
+            obj_val = float("inf")
+
+        return {
+            "n_ij": equilibrium,
+            "SFC": SFC,
+            "status": gibbs_free_energy.status if equilibrium else "FailedSolve",
+            "objective": obj_val if obj_val is not None else float("inf"),
+        }
+
+    @staticmethod
+    def minimize_gibbs(
+        T: float,
+        glyceride_mix: GlycerideMix,
+        warm_start: dict | None = None,
+    ) -> dict:
+        """
+        Minimize the total Gibbs Free Energy of the TAG mixture at temperature T
+        using GAMSPy and return the equilibrium mole numbers and the SFC.
+
+        Following DosSantos et al. (2013), three separate two-phase
+        (liquid + one solid polymorph) sub-problems are solved, and the
+        result with the lowest Gibbs energy is selected.
+
+        Parameters
+        ----------
+        T : float
+            Temperature [K].
+        glyceride_mix : GlycerideMix
+            TAG mixture with molar quantities.
+        warm_start : dict or None
+            Optional mapping ``{(tag_name, phase): moles}`` from the previous
+            temperature step (i.e. the ``"n_ij"`` field returned by a prior
+            call to this method).  When supplied, these values are used as the
+            initial point for ``n_ij`` instead of the default
+            all-liquid initialization.
+
+        Returns
+        -------
+        dict
+            Keys:
+            - "n_ij"  : dict mapping (tag_name, phase) -> equilibrium moles
+            - "SFC"   : Solid Fat Content as a mass fraction [0, 1]
+            - "status": solver status string
+        """
+        solid_polymorphs = ["alpha", "beta_prime", "beta"]
+
+        best_result = None
+        best_obj = float("inf")
+
+        for polymorph in solid_polymorphs:
+            result = DSC._minimize_gibbs_two_phase(
+                T,
+                glyceride_mix,
+                polymorph,
+                warm_start=warm_start,
+            )
+            obj = result.get("objective", float("inf"))
+            # Grab the result with the lowest Gibbs energy among the three polymorph sub-problems
+            if obj is not None and obj < best_obj:
+                best_obj = obj
+                best_result = result
+
+        if best_result is None:
+            best_result = result
+
+        return {
+            "n_ij": best_result["n_ij"],
+            "SFC": best_result["SFC"],
+            "status": best_result["status"],
+        }
+
+    @staticmethod
+    def compute_sfc_curve(
+        glyceride_mix: GlycerideMix,
+        T_start_C: float = -30.0,
+        T_end_C: float = 60.0,
+        dT_C: float = 1.0,
+    ) -> pd.DataFrame:
+        """
+        Compute the full SFC vs. temperature melting curve for the given mixture
+        (solid -> liquid direction).
+
+        Parameters
+        ----------
+        glyceride_mix : GlycerideMix
+            TAG mixture with molar quantities.
+        T_start_C : float
+            Starting temperature [C].
+        T_end_C : float
+            Final temperature [C].
+        dT_C : float
+            Temperature step size [C].
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ["T_C", "T_K", "SFC", "solver_status"].
+        """
+        rows = []
+        T_C = T_start_C
+        prev_n_ij: dict | None = None  # warm-start from the previous step
+        prev_SFC = None
+        # Ensure the units of the mixture are in moles!
+        glyceride_mix = glyceride_mix.change_units("Moles")
+        while T_C <= T_end_C:
+            T_K = T_C + 273.15
+            # if prev_SFC is not None and prev_n_ij is not None:
+            #     if prev_SFC < 0.05:
+            #         result = {
+            #             "n_ij": prev_n_ij,
+            #             "SFC": 0.0,
+            #             "status": "OptimalSolution",
+            #         }
+            # else:
+            #     result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
+
+            result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
+            sfc = result["SFC"]
+            rows.append(
+                {
+                    "T_C": T_C,
+                    "T_K": T_K,
+                    "SFC": sfc,
+                    "solver_status": result["status"],
+                }
+            )
+
+            # Carry the equilibrium moles forward as the next warm-start
+            prev_n_ij = result["n_ij"]
+
+            # Stop scanning once completely melted (SFC = 0)
+            # if sfc <= 0.0:
+            #     break
+
+            T_C += dT_C
+
+        return pd.DataFrame(rows)
+
+    @staticmethod
+    def compute_sfc_hysteresis(
+        glyceride_mix: GlycerideMix,
+        T_start_C: float = -30.0,
+        T_end_C: float = 60.0,
+        dT_C: float = 1.0,
+    ) -> pd.DataFrame:
+        """
+        Compute the full SFC hysteresis loop for the given mixture.
+
+        Two sequential scans are performed, each warm-starting every step from
+        the previous step's equilibrium solution (Section 3.2, DosSantos et al.):
+
+        * **Heating scan** (solid -> liquid): temperature increases from
+          T_start_C to T_end_C (or until SFC = 0).
+        * **Cooling scan** (liquid -> solid): temperature decreases from
+          T_end_C back to T_start_C (or until SFC = 1).
+
+        Parameters
+        ----------
+        glyceride_mix : GlycerideMix
+            TAG mixture with molar quantities.
+        T_start_C : float
+            Lowest temperature of the loop [C].
+        T_end_C : float
+            Highest temperature of the loop [C].
+        dT_C : float
+            Absolute temperature step size [C]; must be positive.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ["T_C", "T_K", "SFC", "solver_status", "scan_direction"].
+            ``scan_direction`` is ``"heating"`` or ``"cooling"``.
+        """
+        if dT_C <= 0:
+            raise ValueError("dT_C must be a positive step size.")
+
+        rows = []
+
+        # Heating scan
+        prev_n_ij: dict | None = None
+        prev_SFC = None
+        T_C = T_start_C
+        # Ensure the units of the mixture are in moles!
+        glyceride_mix = glyceride_mix.change_units("Moles")
+        while T_C <= T_end_C:
+            T_K = T_C + 273.15
+            if prev_SFC is not None and prev_n_ij is not None and prev_SFC < 0.05:
+                result = {
+                    "n_ij": prev_n_ij,
+                    "SFC": 0.0,
+                    "status": "OptimalSolution",
+                    "scan_direction": "heating",
+                }
+            else:
+                result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
+            # result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
+            sfc = result["SFC"]
+            prev_n_ij = result["n_ij"]
+            prev_SFC = result["SFC"]
+            rows.append(
+                {
+                    "T_C": T_C,
+                    "T_K": T_K,
+                    "SFC": sfc,
+                    "solver_status": result["status"],
+                    "scan_direction": "heating",
+                }
+            )
+
+            # if sfc <= 0.0:
+            #     # Fully melted – record final temperature for the cooling seed
+            #     T_end_actual = T_C
+            #     break
+
+            T_C += dT_C
+        else:
+            T_end_actual = T_end_C
+
+        # Cooling Scan
+        T_C = T_end_actual
+        result = {
+            "n_ij": prev_n_ij,
+            "SFC": 0.0,
+            "status": "OptimalSolution",
+            "scan_direction": "cooling",
+        }
+        prev_n_ij = result["n_ij"]
+        prev_SFC = result["SFC"]
+        sfc = result["SFC"]
+        rows.append(
+            {
+                "T_C": T_C,
+                "T_K": T_K,
+                "SFC": sfc,
+                "solver_status": result["status"],
+                "scan_direction": "cooling",
+            }
+        )
+        T_C -= dT_C
+
+        while T_C >= T_start_C:
+            T_K = T_C + 273.15
+            if prev_SFC is not None and prev_n_ij is not None and prev_SFC > 0.97:
+                result = {
+                    "n_ij": prev_n_ij,
+                    "SFC": 1.0,
+                    "status": "OptimalSolution",
+                    "scan_direction": "cooling",
+                }
+            else:
+                result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
+
+            prev_n_ij = result["n_ij"]
+            prev_SFC = result["SFC"]
+            sfc = result["SFC"]
+            rows.append(
+                {
+                    "T_C": T_C,
+                    "T_K": T_K,
+                    "SFC": sfc,
+                    "solver_status": result["status"],
+                    "scan_direction": "cooling",
+                }
+            )
+
+            # if sfc >= 1.0:
+            #     break
+
+            T_C -= dT_C
+
+        return pd.DataFrame(rows)
+
+    @staticmethod
+    def plot_results(results, hysteresis: bool = False, return_fig=False):
+        """
+        Plot SFC vs. temperature from a DataFrame or list of dicts.
+
+        Parameters
+        ----------
+        results : pd.DataFrame or list of dicts
+            Output from ``compute_sfc_curve`` or ``compute_sfc_hysteresis``.
+        hysteresis : bool
+            When True the DataFrame is expected to contain a
+            ``"scan_direction"`` column and both heating / cooling branches
+            are drawn on the same axes with distinct colours.
+        """
+        import plotly.express as px
+        import plotly.graph_objects as go
+
+        df = results if isinstance(results, pd.DataFrame) else pd.DataFrame(results)
+
+        if df.empty:
+            print("DataFrame is empty. No data to plot.")
+            return
+
+        if hysteresis and "scan_direction" in df.columns:
+            fig = go.Figure()
+            colors = {"heating": "#d62728", "cooling": "#1f77b4"}
+            for direction, group in df.groupby("scan_direction"):
+                fig.add_trace(
+                    go.Scatter(
+                        x=group["T_C"],
+                        y=group["SFC"],
+                        mode="lines+markers",
+                        name=direction.capitalize(),
+                        line=dict(color=colors.get(direction, None)),
+                    )
+                )
+            fig.update_layout(
+                title="SFC Hysteresis Loop (Heating & Cooling)",
+                xaxis_title="Temperature (°C)",
+                yaxis_title="Solid Fat Content (SFC)",
+                yaxis=dict(range=[0.0, 1.0]),
+                template="plotly_white",
+                legend_title="Scan direction",
+            )
+        else:
+            fig = px.line(
+                df,
+                x="T_C",
+                y="SFC",
+                markers=True,
+                title="Solid Fat Content vs Temperature",
+                labels={"T_C": "Temperature (°C)", "SFC": "Solid Fat Content (SFC)"},
+            )
+            fig.update_layout(yaxis=dict(range=[0.0, 1.0]), template="plotly_white")
+
+        if return_fig:
+            return fig
+        else:
+            fig.show()
+
+    @staticmethod
+    def _build_mu_records(T: float, glyceride_mix: GlycerideMix) -> pd.DataFrame:
+        """
+        Build a DataFrame of chemical potential records suitable for a GAMSPy
+        Parameter with domain [nc, np].
+
+        Each row has the form (tag_name, phase_label, mu_value).
+
+        Parameters
+        ----------
+        T : float
+            Temperature [K].
+        glyceride_mix : GlycerideMix
+            Mixture whose TAG components carry melting data.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ["tag", "phase", "mu"].
+        """
+        rows = []
+        for comp in glyceride_mix.mix.keys():
+            glyceride = comp.component if isinstance(comp, MixtureComponent) else comp
+            if not isinstance(glyceride, Glyceride):
+                # Non-TAG species (water, glycerol) treated as purely liquid
+                for phase in PHASES:
+                    rows.append((comp.name, phase, 0.0))
+                continue
+            elif len([x for x in comp.component.sn if x is not None]) != 3:
+                # Treat DAGS and MAGS as purely liquid
+                for phase in PHASES:
+                    rows.append((comp.name, phase, 0.0))
+                continue
+
+            for phase in PHASES:
+                mu_val = DSC.chemical_potential(T, glyceride, phase)
+                rows.append((comp.name, phase, mu_val))
+
+        return pd.DataFrame(rows, columns=["tag", "phase", "mu"])
+
+    def _build_delta_H_records(glyceride_mix: GlycerideMix) -> pd.DataFrame:
+        """
+        Build a DataFrame of melting-enthalpy records [kJ/mol] for each
+        (TAG, polymorph) pair, suitable for a GAMSPy Parameter with domain [nc, np].
+
+        Parameters
+        ----------
+        glyceride_mix : GlycerideMix
+            Mixture whose TAG components carry melting data.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ["tag", "phase", "delta_H"].
+        """
+        rows = []
+        for comp in glyceride_mix.mix.keys():
+            glyceride = comp.component if isinstance(comp, MixtureComponent) else comp
+            for phase in PHASES:
+                if phase == "liquid" or not isinstance(glyceride, Glyceride):
+                    dH = 0.0
+                # Treat MAG and DAG species as liquid
+                elif len([x for x in comp.component.sn if x is not None]) != 3:
+                    dH = 0.0
+                else:
+                    dH = glyceride.melting_enthalpy(phase)  # kJ/mol
+                rows.append((comp.name, phase, dH))
+
+        return pd.DataFrame(rows, columns=["tag", "phase", "delta_H"])
+
+    # ------------------------------------------------------------------------------
+    # Margulles isomorphism correlation model to calculate the activity coefficient
+    # ------------------------------------------------------------------------------
+
+    @staticmethod
+    def _build_gamma_records(T: float, glyceride_mix: GlycerideMix) -> pd.DataFrame:
+        """
+        Build a DataFrame of activity coefficient records for each (TAG, phase)
+        pair, suitable for a GAMSPy Parameter with domain [nc, np].
+
+        The alpha and liquid phases are ideal (gamma = 1.0). For beta_prime and
+        beta, gamma is computed via the 2-suffix Margules model.
+
+        Parameters
+        ----------
+        T : float
+            Temperature [K].
+        glyceride_mix : GlycerideMix
+            Mixture whose TAG components carry melting data.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ["tag", "phase", "gamma"].
+        """
+        rows = []
+        for i, comp in enumerate(glyceride_mix.mix.keys()):
+            for phase in PHASES:
+                if phase == "liquid" or not isinstance(comp.component, Glyceride):
+                    gamma_val = 1.0
+                # Treat MAG and DAG species as liquid
+                elif len([x for x in comp.component.sn if x is not None]) != 3:
+                    gamma_val = 1.0
+                else:
+                    gamma_val = DSC.gamma(glyceride_mix, i, T, phase)
+                rows.append((comp.name, phase, gamma_val))
+
+        return pd.DataFrame(rows, columns=["tag", "phase", "gamma"])
+
+    @staticmethod
+    def _excess_gibbs_free_energy(mix: GlycerideMix, T: float, polymorph: str):
+        if polymorph not in ["beta_prime", "beta"]:
+            raise ValueError("The polymorph must either be beta_prime or beta!")
+        comp_list = list(mix.mix.keys())
+        A = numpy.zeros(shape=(len(comp_list), len(comp_list)))
+        if (mix, T, polymorph) not in DSC._cache:
+
+            # Create molar fractions list
+            molar_fractions = [i / mix.total_quantity() for i in mix.quantities]
+            for i in range(len(comp_list)):
+                for j in range(i + 1, len(comp_list)):
+
+                    # Grab fatty acids
+                    nCi = comp_list[i].component.sn
+                    nCj = comp_list[j].component.sn
+
+                    # Calcluate isomorphism factor
+                    v_non = sum(abs(nCi[k].length - nCj[k].length) for k in range(3))
+                    v_0 = sum(min(nCi[k].length, nCj[k].length) for k in range(3))
+                    epsilon = 1 - (v_non / v_0)
+
+                    # Fit isomorphism factor to linear models
+                    if polymorph == "beta":
+                        A[i][j] = (
+                            0 if epsilon > 0.93 else R * T * (-19.5 * epsilon + 18.2)
+                        )
+                    else:
+                        A[i][j] = (
+                            0 if epsilon > 0.98 else R * T * (-35.8 * epsilon + 35.9)
+                        )
+
+            # Calculate excess gibbs free energy
+            gE = 0
+            for i in range(len(comp_list)):
+                for j in range(i + 1, len(comp_list)):
+                    A[j][i] = A[i][j]
+                    gE += A[i][j] * molar_fractions[i] * molar_fractions[j]
+
+            # Update class cache
+            DSC._cache[(mix, T, polymorph)] = (gE, A)
+
+        return DSC._cache[(mix, T, polymorph)]

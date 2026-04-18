@@ -1,4 +1,16 @@
 import streamlit as st
+from glyze.ui.pages.Glyceride_Mix import (
+    PAGE_CSS,
+    MixRow,
+    comp_display_name,
+    get_mix_rows,
+    rows_to_display_df,
+)
+
+from glyze.chem_processor import DSC
+from glyze.glyceride import Glyceride, FattyAcid
+from glyze.glyceride_mix import GlycerideMix
+import pandas as pd
 
 st.set_page_config(page_title="GLYZE — SFC Calculator", page_icon="🧈", layout="wide")
 
@@ -393,7 +405,193 @@ st.markdown(
 # Card wrapper
 st.markdown('<div class="glyze-card">', unsafe_allow_html=True)
 st.markdown('<div class="start-title">SFC Calculator</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="start-subtitle">Add species on the left, edit the mixture in the center, export on the right.</div>',
-    unsafe_allow_html=True,
-)
+
+HERO_HTML = """
+<div class="center glyze-hero">
+    <div class="glyze-logo">
+        <div class="glyze-word">GLYZE</div>
+        <div class="butter-badge">🧈</div>
+    </div>
+    <div class="glyze-tagline">
+        Calculate the SFC curve of a Glyceride Mixture!
+    </div>
+</div>
+<div class="glyze-divider"></div>
+"""
+
+
+st.markdown(PAGE_CSS, unsafe_allow_html=True)
+st.markdown(HERO_HTML, unsafe_allow_html=True)
+
+
+def get_processor_rows():
+    """Retrieve the current mixture rows from session state."""
+    if "processor_mix_rows" in st.session_state:
+        return st.session_state["processor_mix_rows"]
+    return get_mix_rows()
+
+
+def build_mix_object(rows):
+    """Build a GlycerideMix from the current MixRow list."""
+    mix_dict = {r.comp: r.moles for r in rows}
+    return GlycerideMix(mix_dict, units="Moles", sort=True)
+
+
+def initialize_sfc_state():
+    """Set default session state keys for the deodorizer page."""
+    st.session_state.setdefault("sfc_initialized", False)
+    st.session_state.setdefault("sfc_ran", False)
+    st.session_state.setdefault("T_start_C", -30.0)
+    st.session_state.setdefault("T_end_C", 60.0)
+    st.session_state.setdefault("dT_C", 1.0)
+    st.session_state.setdefault("only_TAGS", False)
+    st.session_state.setdefault("sfc_results", None)
+
+
+initialize_sfc_state()
+rows = get_processor_rows()
+
+if not rows:
+    st.info("Please build or import a mixture on the Glyceride Mix page first.")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+st.write(f"Loaded {len(rows)} species from the current mixture.")
+# Display rows in dataframe in the middle of the screen
+df = rows_to_display_df(rows, st.session_state.get("display_unit", "Moles"))
+st.dataframe(df, use_container_width=True)
+
+
+# Display various input parameters for the deodorizer
+st.subheader("SFC Parameters")
+
+left_col, right_col = st.columns(2, gap="medium")
+
+# Temperature and pressure input on the left
+with left_col:
+    T_start_C = st.number_input(
+        "Starting Temperature (°C)",
+        min_value=-273.15,
+        max_value=2000.00,
+        value=float(st.session_state["T_start_C"]),
+        step=1.0,
+        key="T_start_C_input",
+    )
+
+    T_end_C = st.number_input(
+        "End Temperature (°C)",
+        min_value=-273.15,
+        max_value=2000.00,
+        value=float(st.session_state["T_end_C"]),
+        step=1.0,
+        key="T_end_C_input",
+    )
+
+# Mechanical entrainment and steam factor on the right
+with right_col:
+    dT_C = st.number_input(
+        "Step Size",
+        min_value=0.001,
+        max_value=10.0,
+        value=float(st.session_state["dT_C"]),
+        step=0.005,
+        format="%.4f",
+        key="dT_C_input",
+    )
+
+    # True or false toggle to plot only the TAGS in the mixture
+    only_TAGS = st.toggle("Only TAGS")
+
+#
+if st.button("Calculate SFC", use_container_width=True, key="sfc_run_button"):
+
+    # Build the GlycerideMix object from current rows
+    try:
+        mix_obj = build_mix_object(rows)
+        if only_TAGS:
+            TAG_indices = []
+            for i, comp in enumerate(mix_obj.mix.keys()):
+                if isinstance(comp.component, Glyceride):
+                    if len([x for x in comp.component.sn if x is not None]) == 3:
+                        TAG_indices.append(i)
+
+            # Create a new mix object using only TAGS
+            components = mix_obj.components
+            quantities = mix_obj.quantities
+            new_mix = [(components[i], quantities[i]) for i in TAG_indices]
+            print(f"{mix_obj.units}")
+            mix_obj = GlycerideMix(mix=new_mix, units=mix_obj.units)
+
+    except Exception as e:
+        st.error(f"Could not build mixture: {e}")
+        st.stop()
+
+    # Snapshot initial state before running for plotting and comparison
+    initial_snapshot = {comp: qty for comp, qty in mix_obj.mix.items()}
+
+    # Single-pass stripping at fixed S
+    results = DSC.compute_sfc_hysteresis(mix_obj, T_start_C, T_end_C, dT_C)
+
+    # Persist to session state
+    st.session_state["T_start_C"] = T_start_C
+    st.session_state["T_end_C"] = T_end_C
+    st.session_state["dT_C"] = dT_C
+    st.session_state["sfc_results"] = results
+    st.session_state["only_TAGS"] = True
+    st.session_state["sfc_ran"] = True
+
+    st.success("Deodorization completed.")
+
+
+# Diplay results if available
+if st.session_state["sfc_ran"]:
+    results: pd.DataFrame = st.session_state["sfc_results"]
+    st.subheader("Results")
+
+    # Results view mode
+    results_mode = st.radio(
+        "Display results as:",
+        ["Hysteresis Plot", "CV"],
+        horizontal=True,
+        key="deod_results_mode",
+    )
+
+    if results_mode == "CV":
+        st.dataframe(
+            results.style.format(
+                {
+                    "T (°C)": "{:.6f}",
+                    "T (K)": "{:.6f}",
+                    "SFC": "{:.6f}",
+                    "solver status": "{:.2f}",
+                }
+            ),
+            use_container_width=True,
+        )
+
+    elif "Hysteresis Plot":
+        fig = DSC.plot_results(results, hysteresis=True, return_fig=True)
+        st.plotly_chart(fig.to_dict(), use_container_width=True)
+
+    st.divider()
+    st.subheader("Export")
+
+    # Download results CSV
+    csv_name = st.text_input(
+        "Enter filename for CSV (without extension)",
+        value="deodorizer_results",
+        key="deod_csv_filename",
+    )
+    csv_bytes = results.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download Results CSV",
+        data=csv_bytes,
+        file_name=csv_name + ".csv" if not csv_name.endswith(".csv") else csv_name,
+        mime="text/csv",
+        use_container_width=True,
+        key="deod_csv_download",
+    )
+
+
+# close card
+st.markdown("</div>", unsafe_allow_html=True)

@@ -4,6 +4,12 @@ import pandas as pd
 
 from glyze.chem_processor.viscosity_calculator import ViscosityCalculator
 from glyze.glyceride_mix import GlycerideMix
+from glyze.ui.pages.Glyceride_Mix import (
+    PAGE_CSS,
+    comp_display_name,
+    get_mix_rows,
+    rows_to_display_df,
+)
 
 
 st.set_page_config(
@@ -366,6 +372,24 @@ st.markdown(
 )
 
 
+HERO_HTML = """
+<div class="center glyze-hero">
+    <div class="glyze-logo">
+        <div class="glyze-word">GLYZE</div>
+        <div class="butter-badge">🧈</div>
+    </div>
+    <div class="glyze-tagline">
+        Calculate the viscostiy of a given glyceride mixture! 
+    </div>
+</div>
+<div class="glyze-divider"></div>
+"""
+
+
+st.markdown(PAGE_CSS, unsafe_allow_html=True)
+st.markdown(HERO_HTML, unsafe_allow_html=True)
+
+
 def get_mix_rows():
     return st.session_state.setdefault("mix_rows", [])
 
@@ -466,15 +490,15 @@ st.markdown(
 
 rows = get_processor_rows()
 
-with st.expander("Current mixture", expanded=True):
-    if rows:
-        st.dataframe(
-            build_mix_preview_dataframe(rows), use_container_width=True, hide_index=True
-        )
-    else:
-        st.info(
-            "No mixture is currently loaded. Create or upload a mixture first on the mixture page."
-        )
+if not rows:
+    st.info("Please build or import a mixture on the Glyceride Mix page first.")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+st.write(f"Loaded {len(rows)} species from the current mixture.")
+# Display rows in dataframe in the middle of the screen
+df = rows_to_display_df(rows, st.session_state.get("display_unit", "Moles"))
+st.dataframe(df, use_container_width=True)
 
 col1, col2, col3 = st.columns(3)
 with col1:

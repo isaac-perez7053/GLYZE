@@ -126,7 +126,7 @@ class Deodorizer:
         mix: GlycerideMix,
         T: float,
         P: float,
-        entrainment = 0.6,
+        entrainment=0.6,
         target: float = 0.001,
         sbounds=(1e-6, 5),
         tol=1e-6,
