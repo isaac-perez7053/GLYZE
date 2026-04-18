@@ -12,6 +12,30 @@ CM3_PER_A3 = 1e-24
 
 
 class Interesterifier:
+    """
+    Interesterification batch reactor model, makes a composition of free fatty acids, 
+    mags, dags, and tags. 
+
+    Attributes:
+    -----------
+
+    Class Methods:
+    --------------
+
+    Methods:
+    --------
+
+    [Static Method]:
+    interesterification_rxn_list: gives a list of chemical reactions occuring in the
+    interesterification reaction
+    interesterification: simulates the batch reaction given a list of glycerides (mags, dags, tags)
+
+
+    Properties:
+    -----------
+
+    
+    """
 
     @staticmethod
     def _normalized_choice(value: str) -> str:
