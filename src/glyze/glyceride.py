@@ -81,7 +81,16 @@ params = {
 
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
-    """Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields."""
+    """
+    Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields.
+
+    Parameters:
+        mol (Chem.mol) : unoptimized RDKit molecule
+        confId (int) : configuration state
+
+    Returns:
+        Chem.mol : optimized RDKit Molecule
+    """
 
     # Helper: one embed attempt with ETKDG v2 and a toggle for random coords
     def _try_embed(use_random: bool) -> int:
