@@ -12,7 +12,7 @@ def main():
             "-m",
             "streamlit",
             "run",
-            f"{spec.origin.removesuffix("__init__.py")}/ui/Home.py",
+            f"{spec.origin.removesuffix('__init__.py')}/ui/Home.py",
         ]
     )
 
