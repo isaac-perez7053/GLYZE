@@ -168,7 +168,7 @@ class DSC:
     def _minimize_gibbs_two_phase(
         T: float,
         glyceride_mix: GlycerideMix,
-        solid_polymorph: str,
+        solid_polymorph: str = None,
         warm_start: dict | None = None,
     ) -> dict:
         """
@@ -201,16 +201,30 @@ class DSC:
                 continue
             if len([x for x in comp.component.sn if x is not None]) != 3:
                 continue
-            Tm = glyceride.melting_temp(solid_polymorph)
-            if T <= Tm:
-                all_above_Tm = False
-                break
+            if solid_polymorph is not None:
+                Tm = glyceride.melting_temp(solid_polymorph)
+                if T <= Tm:
+                    all_above_Tm = False
+                    break
+            else:
+                # If no solid polymorph specified, check if T is above all melting points
+                for polymorph in ["alpha", "beta_prime", "beta"]:
+                    Tm = glyceride.melting_temp(polymorph)
+                    if T <= Tm:
+                        all_above_Tm = False
+                        break
+                if not all_above_Tm:
+                    break
 
         if all_above_Tm:
             equilibrium = {}
             for comp, qty in glyceride_mix.mix.items():
                 equilibrium[(comp.name, "liquid")] = qty
-                equilibrium[(comp.name, solid_polymorph)] = 0.0
+                if solid_polymorph:
+                    equilibrium[(comp.name, solid_polymorph)] = 0.0
+                else:
+                    for polymorph in ["alpha", "beta_prime", "beta"]:
+                        equilibrium[(comp.name, polymorph)] = 0.0
             # Compute the all-liquid objective: sum_i n_i * RT * log(x_i)
             obj_val = 0.0
             for comp, qty in glyceride_mix.mix.items():
@@ -224,7 +238,10 @@ class DSC:
                 "objective": obj_val,
             }
 
-        two_phases = ["liquid", solid_polymorph]
+        if solid_polymorph: 
+            phases = ["liquid", solid_polymorph]
+        else:
+            phases = PHASES
 
         m = Container()
 
@@ -239,7 +256,7 @@ class DSC:
         np_set = Set(
             container=m,
             name="np",
-            records=two_phases,
+            records=phases,
             description="Phases (liquid + one solid polymorph)",
         )
 
@@ -258,7 +275,7 @@ class DSC:
 
         # Pure-component chemical potentials mu_i^{0,j}(T) [J/mol]
         mu_records_full = DSC._build_mu_records(T, glyceride_mix)
-        mu_records = mu_records_full[mu_records_full["phase"].isin(two_phases)]
+        mu_records = mu_records_full[mu_records_full["phase"].isin(phases)]
         mu_pure = Parameter(
             container=m,
             name="mu_pure",
@@ -268,7 +285,7 @@ class DSC:
         )
 
         gamma_records_full = DSC._build_gamma_records(T, glyceride_mix)
-        gamma_records = gamma_records_full[gamma_records_full["phase"].isin(two_phases)]
+        gamma_records = gamma_records_full[gamma_records_full["phase"].isin(phases)]
         gamma_param = Parameter(
             container=m,
             name="gamma_param",
@@ -367,7 +384,7 @@ class DSC:
         init_mix = 1e-6
 
         for comp in glyceride_mix.mix.keys():
-            for phase in two_phases:
+            for phase in phases:
                 key = (comp.name, phase)
                 if warm_start is not None and key in warm_start:
                     n_ij.l[comp.name, phase] = max(warm_start[key], init_mix)
@@ -377,7 +394,7 @@ class DSC:
                     else:
                         n_ij.l[comp.name, phase] = init_mix
 
-        for phase in two_phases:
+        for phase in phases:
             phase_total = sum(
                 (
                     max(warm_start.get((comp.name, phase), init_mix), init_mix)
@@ -408,10 +425,10 @@ class DSC:
                 phase = row["np"]
                 level = row["level"]
                 equilibrium[(tag, phase)] = level
-                if phase == solid_polymorph:
-                    total_solid_moles += level
-                elif phase == "liquid":
+                if phase == "liquid":
                     total_liquid_moles += level
+                else:
+                    total_solid_moles += level
 
         SFC = total_solid_moles / max(total_moles, 1e-12)
 
@@ -439,6 +456,7 @@ class DSC:
         T: float,
         glyceride_mix: GlycerideMix,
         warm_start: dict | None = None,
+        two_phases: bool = True,
     ) -> dict:
         """
         Minimize the total Gibbs Free Energy of the TAG mixture at temperature T
@@ -474,21 +492,31 @@ class DSC:
         best_result = None
         best_obj = float("inf")
 
-        for polymorph in solid_polymorphs:
-            result = DSC._minimize_gibbs_two_phase(
-                T,
-                glyceride_mix,
-                polymorph,
-                warm_start=warm_start,
-            )
-            obj = result.get("objective", float("inf"))
-            # Grab the result with the lowest Gibbs energy among the three polymorph sub-problems
-            if obj is not None and obj < best_obj:
-                best_obj = obj
+        if two_phases:
+            for polymorph in solid_polymorphs:
+                result = DSC._minimize_gibbs_two_phase(
+                    T,
+                    glyceride_mix,
+                    polymorph,
+                    warm_start=warm_start,
+                )
+                obj = result.get("objective", float("inf"))
+                # Grab the result with the lowest Gibbs energy among the three polymorph sub-problems
+                if obj is not None and obj < best_obj:
+                    best_obj = obj
+                    best_result = result
+
+            if best_result is None:
                 best_result = result
 
-        if best_result is None:
-            best_result = result
+        else:
+            # Solve the full four-phase problem with all polymorphs simultaneously
+            best_result = DSC._minimize_gibbs_two_phase(
+                T,
+                glyceride_mix,
+                solid_polymorph=None,
+                warm_start=warm_start,
+            )
 
         return {
             "n_ij": best_result["n_ij"],
@@ -502,6 +530,7 @@ class DSC:
         T_start_C: float = -30.0,
         T_end_C: float = 60.0,
         dT_C: float = 1.0,
+        two_phases: bool = True,
     ) -> pd.DataFrame:
         """
         Compute the full SFC vs. temperature melting curve for the given mixture
@@ -541,7 +570,7 @@ class DSC:
             # else:
             #     result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
 
-            result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
+            result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij, two_phases=two_phases)
             sfc = result["SFC"]
             rows.append(
                 {
@@ -569,6 +598,7 @@ class DSC:
         T_start_C: float = -30.0,
         T_end_C: float = 60.0,
         dT_C: float = 1.0,
+        two_phases: bool = True,
     ) -> pd.DataFrame:
         """
         Compute the full SFC hysteresis loop for the given mixture.
@@ -619,7 +649,7 @@ class DSC:
                     "scan_direction": "heating",
                 }
             else:
-                result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
+                result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij, two_phases=two_phases)
             # result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
             sfc = result["SFC"]
             prev_n_ij = result["n_ij"]
