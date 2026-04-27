@@ -65,7 +65,7 @@ class PKineticSim:
     init_state: np.ndarray  # (ns,)
     k_det: np.ndarray  # (nr,)
     rxn_names: list
-    chem_flag: bool
+    chem_flag: bool 
     overall_order: float | None = None
     units: str = "moles"
 
@@ -79,7 +79,7 @@ class PKineticSim:
         """
         return self.prod_stoic - self.react_stoic
 
-    def alpha(self) -> np.ndarray:
+    def alpha(self) -> np.ndarray: 
         """
         Kinetic orders alpha(ns, nr).
         If overall_order is None -> alpha = R (standard mass-action).

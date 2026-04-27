@@ -494,11 +494,11 @@ class FattyAcid:
         for i in range(2, self.length + 1):
             ci = rw.AddAtom(Chem.Atom(6))
             chain_idx.append(ci)
-            if last is not None:
+            if last is not None: 
                 rw.AddBond(last, ci, Chem.BondType.SINGLE)
             last = ci
         # Branhces
-        for pos, lbl in self.branches:
+        for pos, lbl in self.branches: 
             # Ensure pos maps to chain_idx[pos -1]
             if lbl.lower() in ("me", "methyl"):
                 if 1 <= pos <= self.length:

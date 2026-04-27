@@ -223,7 +223,7 @@ class Esterifier:
                     unique_dags.add(dg1)
                     dag_lookup[(mag.name, fa.name, 0)] = dg1
 
-        unique_tgs = OrderedSet()
+        unique_tgs = OrderedSet() 
         tg_lookup: Dict[Tuple[str, str], SymmetricGlyceride] = (
             {}
         )  # (dag.name, fa.name) -> TG
