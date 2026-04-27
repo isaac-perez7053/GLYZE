@@ -81,7 +81,16 @@ params = {
 
 
 def _optimize_mol(mol: Chem.Mol, confId: int) -> Chem.Mol:
-    """Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields."""
+    """
+    Optimize the 3D structure of an RDKit molecule with ETKDG v2 and force fields.
+
+    Parameters:
+        mol (Chem.mol) : unoptimized RDKit molecule
+        confId (int) : configuration state
+
+    Returns:
+        Chem.mol : optimized RDKit Molecule
+    """
 
     # Helper: one embed attempt with ETKDG v2 and a toggle for random coords
     def _try_embed(use_random: bool) -> int:
@@ -1068,7 +1077,25 @@ class Glyceride:
         def unsaturated_melting_enthalpy(
             glyceride: "Glyceride", polymorph: str
         ) -> float:
-            pass  # not yet implemented
+            nO = nE = nJ = nN = 0
+
+            for fa in glyceride.sn:
+                if fa is None:
+                    continue
+                if fa.num_dbs == 1:
+                    nO += 1
+                elif fa.num_dbs == 2:
+                    nJ += 1
+                elif fa.num_dbs >= 3:
+                    nN += 1
+
+            hf_sat = saturated_melting_enthalpy(glyceride, polymorph)
+
+            hol = params["AE"][j]
+            hel = params["Ale"][j]
+            hli = params["Al"][j]
+
+            return hf_sat + hol * nO + hel * nE + hli * nJ
 
         if sum(fa.num_dbs for fa in self.sn) == 0:
             return saturated_melting_enthalpy(self, polymorph)
@@ -1161,7 +1188,85 @@ class Glyceride:
 
         #TODO
         def unsaturated_melting_temp(glyceride: "Glyceride", polymorph) -> float:
-            pass  # not yet implemented
+            
+            n = sum(glyceride.chain_lengths)
+            n1 = glyceride.sn[0].length
+            n2 = glyceride.sn[1].length
+            n3 = glyceride.sn[2].length
+
+            Q = glyceride.chain_lengths[1]
+            P = min(n1, n3)
+            R = max(n1, n3)
+
+            x = Q - P
+            y = R - P
+
+            fodd = Glyceride._fodd(n1, n2, n3)
+
+            # count unsaturation types
+            nO = nE = nJ = nN = 0
+            for fa in glyceride.sn:
+                if fa is None:
+                    continue
+                if fa.num_dbs == 1:
+                    nO += 1
+                elif fa.num_dbs == 2:
+                    nJ += 1
+                elif fa.num_dbs >= 3:
+                    nN += 1
+
+            nOO = max(0, nO - 1)
+            nJJ = max(0, nJ - 1)
+            nNN = max(0, nN - 1)
+
+            nOJ = nO * nJ
+            nON = nO * nN
+            nJN = nJ * nN
+
+            # saturated base
+            As = (
+                params["A0"][j]
+                + params["Aodd"][j] * fodd
+                + params["Ax"][j] * x
+                + params["Ax2"][j] * x**2
+                + params["Axy"][j] * x * y
+                + params["Ay"][j] * y
+                + params["Ay2"][j] * y**2
+            )
+
+            Bs = (
+                params["B0"][j]
+                + params["Bodd"][j] * fodd
+                + params["Bx"][j] * x
+                + params["Bx2"][j] * x**2
+                + params["Bxy"][j] * x * y
+                + params["By"][j] * y
+                + params["By2"][j] * y**2
+            )
+
+            Au = (
+                As
+                + params["AE"][j] * nO
+                + params["Al"][j] * nJ
+                + params["Ale"][j] * nN
+                + params["AOO"][j] * nOO
+                + params["All"][j] * nJJ
+                + params["Alele"][j] * nNN
+                + params["AOl"][j] * nOJ
+                + params["Aole"][j] * nON
+                + params["Alle"][j] * nJN
+            )
+
+            Bu = (
+                Bs
+                + params["BO"][j] * nO
+                + params["Bl"][j] * nJ
+                + params["Ble"][j] * nN
+            )
+
+            Tinf = params["Tinf"][j]
+
+            return Tinf * (1 + (Au / n) - ((Au * Bu) / (n**2)))
 
         if sum(fa.num_dbs for fa in self.sn) == 0:
             return saturated_melting_temp(self, polymorph)

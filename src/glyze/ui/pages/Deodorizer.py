@@ -448,9 +448,9 @@ def initialize_deodorizer_state():
     """Set default session state keys for the deodorizer page."""
     st.session_state.setdefault("deod_initialized", False)
     st.session_state.setdefault("deod_ran", False)
-    st.session_state.setdefault("deod_T_C", 250.0)
-    st.session_state.setdefault("deod_P_mbar", 3.0)
-    st.session_state.setdefault("deod_S", 1.0)
+    st.session_state.setdefault("deod_T_C", 200.0)
+    st.session_state.setdefault("deod_P_mTorr", 50.0)
+    st.session_state.setdefault("deod_S", 0.5)
     st.session_state.setdefault(
         "deod_entrainment", 0.05
     )  # 5% yield loss due to mechanical carryover, indepdendent of vapor pressure
@@ -489,13 +489,13 @@ with left_col:
         key="deod_T_C_input",
     )
 
-    P_mbar = st.number_input(
-        "System pressure (mbar)",
+    P_mTorr = st.number_input(
+        "System pressure (mTorr)",
         min_value=0.1,
         max_value=100.0,
-        value=float(st.session_state["deod_P_mbar"]),
+        value=float(st.session_state["deod_P_mTorr"]),
         step=0.5,
-        key="deod_P_mbar_input",
+        key="deod_P_mTorr_input",
     )
 
 # Mechanical entrainment and steam factor on the right
@@ -525,7 +525,7 @@ with right_col:
 if st.button("Run Deodorizer", use_container_width=True, key="deod_run_button"):
     # Convert units
     T_K = T_C + 273.15
-    P_Pa = P_mbar * 100.0  # mbar -> Pa
+    P_Pa = P_mTorr * 0.1333224  # mTorr -> Pa
 
     # Build the GlycerideMix object from current rows
     try:
@@ -548,7 +548,7 @@ if st.button("Run Deodorizer", use_container_width=True, key="deod_run_button"):
 
     # Persist to session state
     st.session_state["deod_T_C"] = T_C
-    st.session_state["deod_P_mbar"] = P_mbar
+    st.session_state["deod_P_mTorr"] = P_mTorr
     st.session_state["deod_S"] = S_used
     st.session_state["deod_entrainment"] = entrainment
     st.session_state["deod_ran"] = True
