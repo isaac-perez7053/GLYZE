@@ -439,7 +439,8 @@ def parse_component_from_string(s: str) -> Any:
     if s.startswith("G_"):
         return Glyceride.from_name(s)
     if s.startswith("N"):
-        return FattyAcid.from_name(s)
+        fa = FattyAcid.from_name(s)
+        return fa
 
     raise ValueError("Unrecognized component. Use N..., G_..., H2O, or Glycerol.")
 
@@ -481,7 +482,8 @@ def comp_display_name(comp: Any) -> str:
     if comp in {"H2O", "Glycerol"}:
         return str(comp)
     if hasattr(comp, "name"):
-        return str(comp.name)
+        name = str(comp.name)
+        return name
     return str(comp)
 
 
@@ -677,7 +679,10 @@ def import_mix_from_uploaded_csv(uploaded_file) -> List[MixRow]:
 
     try:
         mix = GlycerideMix.from_csv(str(tmp_path))
-        return [MixRow(comp, moles) for comp, moles in mix.mix.items()]
+        # Normalize to moles regardless of what unit the CSV was exported in
+        if mix.units != "Moles":
+            mix = mix.change_units("Moles")
+        return [MixRow(comp.component, moles) for comp, moles in mix.mix.items()]
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -761,7 +766,8 @@ with left:
 
         if quick_add:
             try:
-                comp = parse_component_from_string(built_fas[fa_name])
+                name = built_fas[fa_name]
+                comp = parse_component_from_string(name)
                 add_to_mix(comp, qty, qty_unit)
                 st.success(f"Added {fa_name} ({qty:g} {qty_unit}).")
             except Exception as e:
@@ -784,7 +790,7 @@ with left:
             "Triolein": "G_N18D01P09Z_N18D01P09Z_N18D01P09Z",
         }
         tag_name = st.selectbox(
-            "Select pure triglyeceride to add",
+            "Select pure triglyceride to add",
             options=list(built_pure_tags.keys()),
             key="built_pure_select",
             placeholder="None",
@@ -815,7 +821,7 @@ with left:
 
         # Input qty for the glyceride to be added
         qty = st.number_input(
-            "Quanitity",
+            "Quantity",
             min_value=0.0,
             value=1.0,
             step=0.1,

@@ -238,7 +238,7 @@ class DSC:
                 "objective": obj_val,
             }
 
-        if solid_polymorph: 
+        if solid_polymorph:
             phases = ["liquid", solid_polymorph]
         else:
             phases = PHASES
@@ -570,7 +570,9 @@ class DSC:
             # else:
             #     result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
 
-            result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij, two_phases=two_phases)
+            result = DSC.minimize_gibbs(
+                T_K, glyceride_mix, warm_start=prev_n_ij, two_phases=two_phases
+            )
             sfc = result["SFC"]
             rows.append(
                 {
@@ -649,7 +651,9 @@ class DSC:
                     "scan_direction": "heating",
                 }
             else:
-                result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij, two_phases=two_phases)
+                result = DSC.minimize_gibbs(
+                    T_K, glyceride_mix, warm_start=prev_n_ij, two_phases=two_phases
+                )
             # result = DSC.minimize_gibbs(T_K, glyceride_mix, warm_start=prev_n_ij)
             sfc = result["SFC"]
             prev_n_ij = result["n_ij"]

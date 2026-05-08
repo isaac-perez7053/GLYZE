@@ -22,7 +22,7 @@ _POLYMORPH_IDX = {"alpha": 0, "beta_prime": 1, "beta": 2}
 R = 8.314
 # In form -> Param: (alpha, beta', beta)
 # Params are taken from the Seilert PII-DL model. 2021, Wesdorp revisited.
-# Take from: 
+# Taken from:
 #              Seilert J, Moorthy AS, Kearsley AJ, Floter E. Revisiting a model
 #             to predict pure triglyceride thermodynamic properties: parameter
 #             optimization and performance. J Am Oil Chem Soc. 2021;98: 837-850.
@@ -195,7 +195,6 @@ def _fa_key(fa: Optional[FattyAcid]) -> tuple:
     )
 
 
-# TODO: Fix the docstrings in the Glyceride and FattyAcid class
 @dataclass(frozen=True)
 class FattyAcid:
     """
@@ -213,6 +212,7 @@ class FattyAcid:
 
     Class Methods
     ---------
+        None
 
     from_name: create a fatty acid using the naming scheme.
 
@@ -494,11 +494,11 @@ class FattyAcid:
         for i in range(2, self.length + 1):
             ci = rw.AddAtom(Chem.Atom(6))
             chain_idx.append(ci)
-            if last is not None: 
+            if last is not None:
                 rw.AddBond(last, ci, Chem.BondType.SINGLE)
             last = ci
         # Branhces
-        for pos, lbl in self.branches: 
+        for pos, lbl in self.branches:
             # Ensure pos maps to chain_idx[pos -1]
             if lbl.lower() in ("me", "methyl"):
                 if 1 <= pos <= self.length:
@@ -546,6 +546,19 @@ class FattyAcid:
         if optimize:
             mol = _optimize_mol(mol, confId=-1)
         return mol
+
+    def __deepcopy__(self, memo):
+        """Return a deepcopy of the object"""
+        # Store the new instance in the memo dict BEFORE recursive calls
+        new_length = copy.deepcopy(self.length)
+        new_db_positions = copy.deepcopy(self.db_positions)
+        new_db_stereo = copy.deepcopy(self.db_stereo)
+        new_branches = copy.deepcopy(self.branches)
+        new_instance = self.__class__(
+            new_length, new_db_positions, new_db_stereo, new_branches
+        )
+        memo[id(self)] = new_instance
+        return new_instance
 
     @cached_property
     def molar_mass(self) -> float:
@@ -1186,9 +1199,9 @@ class Glyceride:
             Tinf = params["Tinf"][j]
             return Tinf * (1 + (Asat / n) - ((Asat * Bsat) / (n**2)))
 
-        #TODO
+        # TODO
         def unsaturated_melting_temp(glyceride: "Glyceride", polymorph) -> float:
-            
+
             n = sum(glyceride.chain_lengths)
             n1 = glyceride.sn[0].length
             n2 = glyceride.sn[1].length
@@ -1258,10 +1271,7 @@ class Glyceride:
             )
 
             Bu = (
-                Bs
-                + params["BO"][j] * nO
-                + params["Bl"][j] * nJ
-                + params["Ble"][j] * nN
+                Bs + params["BO"][j] * nO + params["Bl"][j] * nJ + params["Ble"][j] * nN
             )
 
             Tinf = params["Tinf"][j]
@@ -1484,6 +1494,14 @@ class Glyceride:
 
         return "G_" + "_".join(fa_name(fa) for fa in self.sn)
 
+    def __deepcopy__(self, memo):
+        """Return a deepcopy of the object"""
+        # Store the new instance in the memo dict BEFORE recursive calls
+        new_sn = tuple(copy.deepcopy(fa) for fa in self.sn)
+        new_instance = self.__class__(sn=new_sn)
+        memo[id(self)] = new_instance
+        return new_instance
+
     def __eq__(self, other):
         """Equality based on the signature tuple."""
         if not isinstance(other, Glyceride):
@@ -1570,6 +1588,15 @@ class SymmetricGlyceride(Glyceride):
                 parts.extend(pos_stereo)
             for bpos, blabel in fa.branches:
                 parts.append(f"M{bpos:02d}")  # Only 'Me' supported now
+
             return "".join(parts)
 
         return "G_" + "_".join([fa_name(left), fa_name(fa2), fa_name(right)])
+
+    def __deepcopy__(self, memo):
+        """Return a deepcopy of the object"""
+        # Deepcopy the sn tuple
+        new_sn = tuple(copy.deepcopy(fa, memo) for fa in self.sn)
+        new_instance = self.__class__(sn=new_sn)
+        memo[id(self)] = new_instance
+        return new_instance

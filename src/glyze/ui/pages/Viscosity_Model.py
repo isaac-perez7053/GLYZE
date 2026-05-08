@@ -425,7 +425,7 @@ def build_mix_preview_dataframe(rows):
     )
 
 
-def build_viscosity_mix(rows):
+def build_viscosity_mix(rows, no_water):
     """
     Convert MixRow entries into a GlycerideMix compatible with ViscosityCalculator.
     """
@@ -437,6 +437,9 @@ def build_viscosity_mix(rows):
     mix_dict = {}
     for row in rows:
         comp = unwrap_component(row.comp)
+        # Do not include water if switch is activated
+        if comp.name == "H20" and no_water:
+            continue
         qty = float(row.moles)
         if qty < 0:
             raise ValueError(
@@ -510,7 +513,8 @@ with col3:
 
 calc_col, clear_col = st.columns([3, 1])
 with calc_col:
-    run_prediction = st.button("Calculate viscosity")
+    no_water = st.toggle("No Water")
+    run_prediction = st.button("Calculate Viscosity")
 with clear_col:
     clear_results = st.button("Clear")
 
@@ -520,9 +524,7 @@ if clear_results:
 
 if run_prediction:
     try:
-        mix = build_viscosity_mix(rows)
-        import inspect
-
+        mix = build_viscosity_mix(rows, no_water)
         result, fig = ViscosityCalculator.calculate_and_plot(
             mix=mix,
             init_temp=float(init_temp),

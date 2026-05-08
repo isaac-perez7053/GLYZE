@@ -540,7 +540,7 @@ if st.button("Calculate SFC", use_container_width=True, key="sfc_run_button"):
     st.session_state["only_TAGS"] = True
     st.session_state["sfc_ran"] = True
 
-    st.success("Deodorization completed.")
+    st.success("SFC Calculation Completed.")
 
 
 # Diplay results if available
@@ -569,18 +569,18 @@ if st.session_state["sfc_ran"]:
             use_container_width=True,
         )
 
-    elif "Hysteresis Plot":
+    elif "Plot":
         fig = DSC.plot_results(results, hysteresis=True, return_fig=True)
         st.plotly_chart(fig.to_dict(), use_container_width=True)
-
+        
     st.divider()
     st.subheader("Export")
 
     # Download results CSV
     csv_name = st.text_input(
         "Enter filename for CSV (without extension)",
-        value="deodorizer_results",
-        key="deod_csv_filename",
+        value="sfc_results",
+        key="sfc_csv_filename",
     )
     csv_bytes = results.to_csv(index=False).encode("utf-8")
     st.download_button(
@@ -589,7 +589,7 @@ if st.session_state["sfc_ran"]:
         file_name=csv_name + ".csv" if not csv_name.endswith(".csv") else csv_name,
         mime="text/csv",
         use_container_width=True,
-        key="deod_csv_download",
+        key="sfc_csv_download",
     )
 
 

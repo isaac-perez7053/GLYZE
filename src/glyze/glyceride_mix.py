@@ -40,7 +40,7 @@ def _clean_name(name: str) -> str:
 
     Parameters:
     -----------
-    name (str) : 
+    name (str) :
         The input name string to be cleaned.
 
     Returns:
@@ -85,7 +85,7 @@ def _hash_letter(name: str, i: int) -> str:
         The index (0-based) of the letter to generate from the hash.
 
     Returns:
-    --------    
+    --------
     str :
         A single uppercase letter derived from the hash of the input name and index, intended for use in generating a resname.
     """
@@ -104,7 +104,7 @@ def make_resname(name: str, taken: set[str]) -> str:
         The input name string from which to generate a resname.
     taken (set[str]) :
         A set of resnames that are already taken and should be avoided.
-    
+
     Returns:
     --------
     str :
@@ -144,7 +144,7 @@ def build_resname_map(glycerides_iter):
     -----------
     glycerides_iter (iterable):
         An iterable of glyceride objects for which to generate resnames.
-    
+
     Returns:
     --------
     dict :
@@ -166,7 +166,7 @@ def _as_pairs(mix) -> List[Tuple[MixtureComponent, float]]:
     -----------
     mix (dict or iterable of pairs):
         The input mixture specification, which can be either a dictionary mapping components to quantities or an iterable of (component, quantity) pairs.
-    
+
     Returns:
     List[Tuple[MixtureComponent, float]] :
         A standardized list of (component, quantity) pairs extracted from the input mixture specification.
@@ -184,7 +184,7 @@ def _canonical_key(comp: MixtureComponent) -> str:
     -----------
     comp (MixtureComponent):
         The mixture component for which to generate a canonical key.
-    
+
     Returns:
     --------
     str :
@@ -295,14 +295,14 @@ class MixtureComponent:
     component (Union[Glyceride, FattyAcid, str]):
         The underlying component, which can be an instance of Glyceride, FattyAcid
         or a string representing water ("H2O") or glycerol ("Glycerol").
-    
+
     Class Methods:
     --------------
     from_name :
         Create a MixtureComponent instance from a string name.
-    from_string : 
+    from_string :
         Create a MixtureComponent instance from a string representation.
-    
+
     Methods:
     --------
     vapor_pressure :
@@ -310,7 +310,7 @@ class MixtureComponent:
 
     Properties:
     name :
-        Get the name of the component. 
+        Get the name of the component.
     molar_mass :
         Get the molar mass of the component in g/mol.
     length :
@@ -357,7 +357,7 @@ class MixtureComponent:
 
         Parameters:
         -----------
-        string (str) : 
+        string (str) :
             The string representation of the component.
 
         Returns:
@@ -371,6 +371,8 @@ class MixtureComponent:
             return cls(FattyAcid.from_name(string))
         elif string == "H2O":
             return cls(string)
+        elif string == "Glycerol":
+            return cls(string)
         else:
             raise TypeError(
                 f"Please enter a valid component name (e.g., G_XXX, NXXX, H2O)"
@@ -379,10 +381,10 @@ class MixtureComponent:
     def vapor_pressure(self, T: float):
         """
         Calculate the vapor pressure of the component at a given temperature T (in Kelvin).
-        
+
         Parameters:
         -----------
-        T (float) : 
+        T (float) :
             Temperature in Kelvin at which to calculate the vapor pressure.
 
         Returns:
@@ -418,6 +420,8 @@ class MixtureComponent:
             return self.component.molar_mass
         elif self.component == "H2O":
             return 18.01528
+        elif self.component == "Glycerol":
+            return 92.0938
         else:
             raise ValueError(f"Unknown molar mass for component: {self.component}")
 
@@ -454,57 +458,57 @@ class GlycerideMix:
 
     zero_tol (float) :
         A tolerance level for treating small quantities as zero to avoid floating-point issues.
-    
+
     components (List[MixtureComponent]) :
         A list of all unique components in the mixture.
-    
+
     quantities (List[float]) :
         A list of the quantities of each component in the mixture.
-    
-    glyceride_list (List[Glyceride]) :  
+
+    glyceride_list (List[Glyceride]) :
         A list of glyceride components in the mixture.
-    
+
     fa_list (List[FattyAcid]) :
         A list of free fatty acid components in the mixture.
-    
+
     glyceride_indices (List[int]) :
         A list of indices corresponding to glyceride components in the components list.
-    
+
     fa_indices (List[int]) :
         A list of indices corresponding to free fatty acid components in the components list.
-    
+
     mol_list (List[Chem.Mol]) :
         A list of RDKit Mol objects corresponding to the glyceride components, used for building Packmol templates.
-    
+
     _mol_by_glyceride (Dict[Glyceride, Chem.Mol]) :
         A dictionary mapping each glyceride to its corresponding RDKit Mol object for quick access.
-    
+
     index_by_key (Dict[str, int]) :
         A dictionary mapping the canonical key of each component to its index in the components list for efficient lookups.
-    
+
     Class Methods:
     --------------
-    from_csv : 
+    from_csv :
         import a mixture specification from a CSV file.
 
     Methods:
     --------
-    change_qty : 
+    change_qty :
         change the quantity of a specific component in the mixture.
-    
-    add_species : 
+
+    add_species :
         add a new component and its quantity to the mixture.
-    
-    total_quantity : 
+
+    total_quantity :
         calculate the total quantity of all components in the mixture.
-    
-    build_simulation_box : 
+
+    build_simulation_box :
         pack the mixture into a cubic box at a target density using Packmol, returning an MDAnalysis Universe.
-    
-    packmol_input_from_mix : 
+
+    packmol_input_from_mix :
         generate a Packmol input file content for the current mixture specification.
-    
-    to_csv : 
+
+    to_csv :
         export the mixture specification to a CSV file.
 
     Properties:
@@ -512,6 +516,7 @@ class GlycerideMix:
         None
 
     """
+
     def __init__(
         self, mix, units: str = "Moles", *, sort: bool = True, zero_tol: float = 1e-12
     ):
@@ -528,7 +533,7 @@ class GlycerideMix:
                 Whether to sort the components alphabetically.
             zero_tol (float) :
                 A tolerance level for treating small quantities as zero to avoid floating-point issues.
-        
+
         Returns:
         --------
             None
@@ -638,9 +643,9 @@ class GlycerideMix:
 
         Parameters:
         -----------
-            component (MixtureComponent) : 
+            component (MixtureComponent) :
                 The component whose quantity is to be changed.
-            new_quantity (float) : 
+            new_quantity (float) :
                 The new quantity for the component.
 
         Returns:
@@ -664,7 +669,7 @@ class GlycerideMix:
         -----------
             species_conc (Tuple[MixtureComponent, float]) :
                 The component and its quantity to be added.
-        
+
         Returns:
         --------
             None
@@ -770,9 +775,9 @@ class GlycerideMix:
         """Quantity lookup after canonicalization.
         Parameters
         ----------
-        comp (MixtureComponent) : 
+        comp (MixtureComponent) :
             The component for which to look up the quantity. This will be canonicalized before lookup.
-            
+
         Returns:
         -------
             float  :
@@ -832,11 +837,11 @@ class GlycerideMix:
     def total_quantity(self) -> float:
         """
         Calculate the total quantity of all glycerides in the mix.
-        
+
         Parameters:
         -----------
             None
-            
+
         Returns:
         --------
         float :

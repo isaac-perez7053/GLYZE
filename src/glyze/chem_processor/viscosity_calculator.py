@@ -156,28 +156,28 @@ class ViscosityCalculator:
 
     _is_empty_glyceride (static method) :
         Treats a glyceride with no attached fatty acids as glycerol.
-    
+
     _is_glycerol_like (static method) :
         Tries to detect glycerol entries based on name and structure.
-    
+
     _fatty_acid_lengths_from_component (static method) :
         Extracts fatty-acid lengths from a component in a tolerant way.
-    
+
     parse_input_mix (static method) :
         Converts a GlycerideMix into an effective component distribution for viscosity calculation.
-    
+
     validate_temperature_range (static method) :
         Checks whether the requested temperature window is valid for every tag.
-    
+
     calculate (static method) :
         Computes pure-component and mixture viscosity curves from a GlycerideMix.
-    
+
     make_plot (static method) :
         Builds an interactive Plotly figure from the result of calculate(...).
-    
+
     calculate_and_plot (static method) :
         Convenience wrapper that computes the result and returns the Plotly figure.
-    
+
     to_csv_string (static method) :
         Converts a result dictionary into a CSV string for download/use in Streamlit.
 
@@ -215,7 +215,7 @@ class ViscosityCalculator:
         Parameters:
         T (np.ndarray) :
              Temperature in C.
-        
+
         Returns:
         --------
         np.ndarray
@@ -234,7 +234,7 @@ class ViscosityCalculator:
 
         Parameters:
         -----------
-        T (np.ndarray) : 
+        T (np.ndarray) :
             Temperature in C.
 
         Returns:
@@ -384,7 +384,7 @@ class ViscosityCalculator:
         -----------
         component (Any) :
             Component object, possibly with a .name attribute or a string representation, or an empty glyceride structure.
-        
+
         Returns:
         --------
         bool
@@ -413,7 +413,7 @@ class ViscosityCalculator:
         -----------
         component (Any) :
             Component object, possibly with various patterns for fatty-acid information.
-        
+
         Returns:
         --------
         List[int]
@@ -506,7 +506,7 @@ class ViscosityCalculator:
         -----------
         mix (GlycerideMix) :
             Mixture of glycerides / fatty acids / water / glycerol.
-    
+
         Returns
         -------
         List[Tuple[str, float]]
@@ -580,7 +580,7 @@ class ViscosityCalculator:
         -------
         ValueError
             If final_temp < init_temp, or if any tag has an empirical validity range that does not cover the requested temperature window.
-        
+
         Returns:
         --------
         None (raises an error if the temperature range is invalid for any tag)

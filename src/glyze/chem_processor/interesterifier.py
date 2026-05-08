@@ -13,14 +13,16 @@ CM3_PER_A3 = 1e-24
 
 class Interesterifier:
     """
-    Interesterification batch reactor model, makes a composition of free fatty acids, 
-    mags, dags, and tags. 
+    Interesterification batch reactor model, makes a composition of free fatty acids,
+    mags, dags, and tags.
 
     Attributes:
     -----------
+    None
 
     Class Methods:
     --------------
+    None
 
     Methods:
     --------
@@ -33,8 +35,9 @@ class Interesterifier:
 
     Properties:
     -----------
+    None
 
-    
+
     """
 
     @staticmethod
@@ -186,7 +189,7 @@ class Interesterifier:
         chem_flag=False,
         units: str = "moles",
     ) -> PKineticSim:
-        """ 
+        """
         Will simulate the bath reaction for the given glyceride spieces.
 
         Parameters:

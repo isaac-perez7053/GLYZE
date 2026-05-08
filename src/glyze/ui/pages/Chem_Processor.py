@@ -985,10 +985,18 @@ def render_esterification_tab():
             "The esterifier uses glycerol plus the fatty acids present in the current mixture."
         )
 
+        mix = st.session_state["glyze_mix_object"]
+        # Ensure mix is in Moles
+        mix.change_units("Moles")
+        # Default is amount of glycerol needed for all fatty acids plus a little more - Nik
         glycerol_initial = st.number_input(
-            "Initial Glycerol Amount",
+            "Initial Glycerol Amount (Moles)",
             min_value=0.0,
-            value=float(st.session_state.get(f"{prefix}_glycerol_init", 0.0)),
+            value=float(
+                st.session_state.get(
+                    f"{prefix}_glycerol_init", (mix.total_mass / 3 * 1.1)
+                )
+            ),
             step=0.1,
             key=f"{prefix}_glycerol_input",
         )

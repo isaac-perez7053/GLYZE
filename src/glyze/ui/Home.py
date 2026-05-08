@@ -203,7 +203,7 @@ col1, col2 = st.columns(2, gap="large")
 
 with col1:
     if st.button("Batch Reactor", use_container_width=True):
-        st.switch_page("pages/Batch_Reactor.py")
+        st.switch_page("pages/Chem_Processor.py")
 
     if st.button("Viscosity Model", use_container_width=True):
         st.switch_page("pages/Viscosity_Model.py")
