@@ -8,14 +8,18 @@ GLYZE is a Python package designed for the study of glycerides. Currently, the p
 
 ## Installation
 
-To install the SymmState package, follow these steps:
+To install the GLYZE package, follow these steps:
 
-1. Install the package using pip:
+1. Install the package locally using pip:
     ```bash
-    pip install glyze
+    pip install .
     ```
 2. Download GROMACS [here](https://manual.gromacs.org/current/download.html) and follow their installation instructions
 3. Download multiwfn [here](http://sobereva.com/multiwfn/) and follow their installation instructions
+4. Launch user interface with:
+    ```bash
+    glyze
+    ```
 
 ## Features
 
@@ -53,6 +57,12 @@ box = mix.build_simulation_box(num_molecules=24, density_g_per_cm3=0.7)
 box.atoms.write("temp.pdb")
 ```
 
+- Calculation of Solid-Fat Content
+```python
+results = DSC.compute_sfc_curve(mix, T_start_C=-60, T_end_C=60, two_phases=False)
+DSC.plot_results(results, hysteresis=True)
+```
+
 ![alt text](images/simulation_box.png)
 
 - Model esterification and other chemical processes
@@ -78,8 +88,6 @@ sol.plot(sol, figsize=(12, 8))
 - Empirically model viscosity of glycerides
 
 - Includes a UI powered by Streamlit that includes a chemical processor, glyceride builder, and more!
-
-![alt text](images/glyze_ui.png)
 
 - Build an MD workflow that calculates the viscosity of a GlycerideMix
 
