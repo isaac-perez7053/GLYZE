@@ -93,11 +93,23 @@ box.atoms.write("temp.pdb")
 The `DSC` module computes solid fat content (SFC) curves for glyceride mixes using thermodynamic models. It supports both single-phase and two-phase melting regimes and can simulate hysteresis between heating and cooling curves.
 
 ```python
+from glyze.chem_processor.dsc import DSC
+from glyze import FattyAcid, Glyceride, GlycerideMix
+
+fa8 = FattyAcid(length=8)
+fa10 = FattyAcid(length=10)
+fa14 = FattyAcid(length=14)
+fa16 = FattyAcid(length=16)
+gly8 = Glyceride(sn=(fa8, fa8, fa8))
+gly10 = Glyceride(sn=(fa10, fa10, fa10))
+gly14 = Glyceride(sn=(fa14, fa14, fa14))
+gly16 = Glyceride(sn=(fa16, fa16, fa16))
+mix = GlycerideMix(mix=[(gly8, 20), (gly10, 15), (gly14, 20), (gly16, 45)])
 results = DSC.compute_sfc_curve(mix, T_start_C=-60, T_end_C=60, two_phases=False)
-DSC.plot_results(results, hysteresis=True)
+DSC.plot_results(results, hysteresis=False)
 ```
 
-![alt text](images/simulation_box.png)
+![alt text](images/sfc_example.png)
 
 ---
 
@@ -277,6 +289,8 @@ Valid temperature ranges vary by chain length — shorter chains (C2–C10) are 
 ### Molecular Dynamics Viscosity Workflow
 
 For high-fidelity predictions, GLYZE includes a full MD pipeline that computes viscosity via the periodic-perturbation (PP) method in GROMACS. The workflow automates charge assignment (via Multiwfn), topology generation, box preparation (via Packmol), energy minimization, NPT/NVT equilibration, and production runs across a range of perturbation amplitudes.
+
+![alt text](images/simulation_box.png)
 
 ```python
 from glyze.md import EViscosityModel, SimPaths
